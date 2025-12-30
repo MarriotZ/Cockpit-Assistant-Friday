@@ -13,8 +13,7 @@
 ## 系统架构
 
 ```
-<img width="514" height="628" alt="image" src="https://github.com/user-attachments/assets/b73ff7b6-c238-4d71-80ca-efe805c3521a" />
-
+<img width="514" height="628" alt="architecture" src="./diagrams/architecture.png" />
 ```
 
 ## 环境要求
