@@ -12,8 +12,7 @@
 
 ## 系统架构
 
-![architecture](./diagrams/architecture.png)
-
+<img width="514" height="628" alt="architecture" src="./diagrams/architecture.png" />
 
 ## 环境要求
 
@@ -211,4 +210,5 @@ https://github.com/ggml-org/llama.cpp
 - [Qwen](https://github.com/QwenLM/Qwen)
 - [faster-whisper](https://github.com/SYSTRAN/faster-whisper)
 - [edge-tts](https://github.com/rany2/edge-tts)
+
 
