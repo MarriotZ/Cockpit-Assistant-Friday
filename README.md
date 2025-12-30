@@ -1,4 +1,4 @@
-# 智能座舱多轮对话助手 - FRIDAY / Cockpit Assistant - FRIDAY
+# 智能座舱语音助手 - FRIDAY / Cockpit Assistant - FRIDAY
 
 基于大语言模型的智能汽车座舱助手，支持语音交互和车辆控制。
 
@@ -214,6 +214,7 @@ MIT License
 - [Qwen](https://github.com/QwenLM/Qwen)
 - [faster-whisper](https://github.com/SYSTRAN/faster-whisper)
 - [edge-tts](https://github.com/rany2/edge-tts)
+
 
 
 
