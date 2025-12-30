@@ -200,6 +200,11 @@ async for audio_chunk in assistant.process_voice_input(audio_data):
 - Apple Silicon: `-DGGML_METAL=ON`
 - 高通平台: 需要使用QNN后端
 
+## 正在进行的工作
+### 手机端互联控制
+
+**目前正在开发iOS和Android两端对该助手进行远程控制的方案**
+
 ## 许可证
 
 MIT License
@@ -209,6 +214,7 @@ MIT License
 - [Qwen](https://github.com/QwenLM/Qwen)
 - [faster-whisper](https://github.com/SYSTRAN/faster-whisper)
 - [edge-tts](https://github.com/rany2/edge-tts)
+
 
 
 
