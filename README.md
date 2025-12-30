@@ -12,9 +12,8 @@
 
 ## 系统架构
 
-```
-<img width="514" height="628" alt="architecture" src="./diagrams/architecture.png" />
-```
+![architecture](./diagrams/architecture.png)
+
 
 ## 环境要求
 
@@ -207,8 +206,9 @@ async for audio_chunk in assistant.process_voice_input(audio_data):
 MIT License
 
 ## 致谢
-
-- [llama.cpp](https://github.com/ggerganov/llama.cpp)
+https://github.com/ggml-org/llama.cpp
+- [llama.cpp](https://github.com/ggml-org/llama.cpp)
 - [Qwen](https://github.com/QwenLM/Qwen)
 - [faster-whisper](https://github.com/SYSTRAN/faster-whisper)
 - [edge-tts](https://github.com/rany2/edge-tts)
+
