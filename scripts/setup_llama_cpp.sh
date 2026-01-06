@@ -33,7 +33,7 @@ if [ -d "$LLAMA_CPP_DIR" ]; then
 else
     echo -e "${GREEN}正在克隆 llama.cpp...${NC}"
     cd "$THIRD_PARTY_DIR"
-    git clone https://github.com/ggerganov/llama.cpp.git
+    git clone https://github.com/ggml-org/llama.cpp.git
 fi
 
 cd "$LLAMA_CPP_DIR"

@@ -28,7 +28,7 @@
 
 ```bash
 # 克隆项目
-git clone https://github.com/yourusername/cockpit-assistant.git
+git clone https://github.com/MarriotZ/Cockpit-Assistant-Friday
 cd cockpit-assistant
 
 # 安装Python依赖
