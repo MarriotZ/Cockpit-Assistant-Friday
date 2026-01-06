@@ -1,4 +1,4 @@
-# 智能座舱多轮对话助手 - FRIDAY / Cockpit Assistant - FRIDAY
+# 智能座舱语音助手 - FRIDAY / Cockpit Assistant - FRIDAY
 
 基于大语言模型的智能汽车座舱助手，支持语音交互和车辆控制。
 
@@ -12,9 +12,7 @@
 
 ## 系统架构
 
-```
-<img width="514" height="628" alt="architecture" src="./diagrams/architecture.png" />
-```
+<img width="600" height="800" alt="architecture" src="./diagrams/architecture.png" />
 
 ## 环境要求
 
@@ -202,13 +200,23 @@ async for audio_chunk in assistant.process_voice_input(audio_data):
 - Apple Silicon: `-DGGML_METAL=ON`
 - 高通平台: 需要使用QNN后端
 
+## 正在进行的工作
+### 手机端互联控制
+
+**目前正在开发iOS和Android两端对该助手进行远程控制的方案**
+
 ## 许可证
 
 MIT License
 
 ## 致谢
-
-- [llama.cpp](https://github.com/ggerganov/llama.cpp)
+- [llama.cpp](https://github.com/ggml-org/llama.cpp)
 - [Qwen](https://github.com/QwenLM/Qwen)
 - [faster-whisper](https://github.com/SYSTRAN/faster-whisper)
 - [edge-tts](https://github.com/rany2/edge-tts)
+
+
+
+
+
+
