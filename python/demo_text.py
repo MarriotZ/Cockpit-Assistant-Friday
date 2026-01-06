@@ -151,7 +151,7 @@ def run():
     parser.add_argument(
         "model_path",
         nargs="?",
-        default="models/qwen2.5-7b-instruct-q4_k_m.gguf",
+        default="models/qwen2.5-3b-instruct-q4_k_m.gguf",
         help="模型文件路径"
     )
     parser.add_argument(
