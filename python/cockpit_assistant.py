@@ -1,7 +1,6 @@
 """
-Cockpit Assistant - 智能座舱助手主类
+Cockpit Assistant - 智能座舱助手类
 
-整合LLM推理引擎、函数调用和车辆控制
 """
 
 import asyncio
@@ -13,12 +12,12 @@ from queue import Queue
 from threading import Thread
 import logging
 
-# 尝试导入C++引擎，如果失败则使用模拟引擎
+# 导入C++引擎，如果失败则模拟
 try:
     from cockpit_engine_py import LLMEngine, Message, GenerationConfig, FunctionCall
     HAS_CPP_ENGINE = True
 except ImportError:
-    HAS_CPP_ENGINE = False
+    HAS_CPP_ENGINE = False  
     print("Warning: C++ engine not available, using mock engine")
 
 from vehicle_controller import VehicleController
@@ -49,7 +48,7 @@ class ChatMessage:
 
 
 # =============================================================================
-# 模拟引擎（用于测试，当C++引擎不可用时）
+# 模拟（测试，C++引擎不可用时）
 # =============================================================================
 
 class MockMessage:

@@ -470,7 +470,7 @@ class VoiceInterface:
         self.recorder = AudioRecorder(audio_config)
         self.player = AudioPlayer(audio_config)
         
-        self._wake_word = "小智"
+        self._wake_word = "Friday"
         self._is_listening = False
     
     def set_wake_word(self, wake_word: str):
@@ -619,7 +619,7 @@ async def _test():
     # 测试TTS
     tts = TTSEngine()
     print("Testing TTS...")
-    audio = await tts.synthesize("你好，我是智能座舱助手小智")
+    audio = await tts.synthesize("你好，我是智能座舱助手Friday")
     print(f"Generated {len(audio)} bytes of audio")
     
     # 如果有音频设备，播放
