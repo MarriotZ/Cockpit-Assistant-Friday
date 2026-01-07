@@ -335,22 +335,34 @@ class FunctionRegistry:
             "functions": self.get_all_schemas()
         }, ensure_ascii=False, indent=2)
     
-    def get_system_prompt_functions(self) -> str:
-        """生成用于系统提示词的函数说明"""
+    def get_system_prompt_functions(self, detailed: bool = True) -> str:
+        """
+        生成用于系统提示词的函数说明
+        
+        Args:
+            detailed: 是否包含详细参数信息
+                     True: 完整格式（函数名+描述+参数）
+                     False: 简洁格式（仅函数名+简要描述）
+        """
         lines = ["可用的函数："]
         for func in self.functions.values():
-            params = []
-            for p in func.parameters:
-                param_str = f"{p.name}: {p.type}"
-                if p.enum:
-                    param_str += f" ({'/'.join(p.enum)})"
-                if p.required:
-                    param_str += " [必需]"
-                params.append(param_str)
-            
-            lines.append(f"- {func.name}: {func.description}")
-            if params:
-                lines.append(f"  参数: {', '.join(params)}")
+            if detailed:
+                # 详细模式：包含参数信息
+                params = []
+                for p in func.parameters:
+                    param_str = f"{p.name}: {p.type}"
+                    if p.enum:
+                        param_str += f" ({'/'.join(p.enum)})"
+                    if p.required:
+                        param_str += " [必需]"
+                    params.append(param_str)
+                
+                lines.append(f"- {func.name}: {func.description}")
+                if params:
+                    lines.append(f"  参数: {', '.join(params)}")
+            else:
+                # 简洁模式：仅函数名和简要描述
+                lines.append(f"- {func.name}: {func.description}")
         
         return "\n".join(lines)
 
@@ -364,6 +376,12 @@ def get_function_schema() -> str:
     return default_registry.to_json_schema()
 
 
-def get_function_prompt() -> str:
-    """获取函数说明提示词"""
-    return default_registry.get_system_prompt_functions()
+def get_function_prompt(detailed: bool = True) -> str:
+    """
+    获取函数说明提示词
+    
+    Args:
+        detailed: 是否包含详细参数信息（默认True，适合大模型）
+                  False: 简洁格式（适合小模型如3B）
+    """
+    return default_registry.get_system_prompt_functions(detailed=detailed)

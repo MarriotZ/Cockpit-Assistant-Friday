@@ -4,6 +4,7 @@
 #include <numeric>
 #include <cmath>
 #include <limits>
+#include <unordered_map>
 
 namespace cockpit {
 
@@ -54,7 +55,7 @@ void Sampler::apply_repetition_penalty(
     }
     
     // 只考虑最近的N个tokens
-    int start = std::max(0, (int)last_tokens.size() - config_.repeat_last_n);
+    int start = (std::max)(0, (int)last_tokens.size() - config_.repeat_last_n);
     
     for (int i = start; i < (int)last_tokens.size(); i++) {
         int32_t token = last_tokens[i];
@@ -75,7 +76,9 @@ void Sampler::apply_repetition_penalty(
             token_counts[last_tokens[i]]++;
         }
         
-        for (const auto& [token, count] : token_counts) {
+        for (const auto& pair : token_counts) {
+            int32_t token = pair.first;
+            int count = pair.second;
             if (token < 0 || token >= vocab_size) continue;
             
             logits[token] -= config_.frequency_penalty * count;
@@ -178,7 +181,7 @@ int32_t Sampler::sample(
     
     // 温度为0时使用贪婪解码
     if (config_.temperature <= 0.0f) {
-        return std::distance(logits, std::max_element(logits, logits + vocab_size));
+        return static_cast<int32_t>(std::distance(logits, std::max_element(logits, logits + vocab_size)));
     }
     
     // 转换为概率分布
@@ -216,7 +219,7 @@ std::vector<std::pair<int32_t, float>> Sampler::get_top_k_tokens(
     }
     
     // 部分排序找到top-k
-    k = std::min(k, vocab_size);
+    k = (std::min)(k, vocab_size);
     std::partial_sort(logit_idx.begin(), 
                       logit_idx.begin() + k,
                       logit_idx.end(),
@@ -234,8 +237,8 @@ std::vector<std::pair<int32_t, float>> Sampler::get_top_k_tokens(
     }
     
     // 归一化
-    for (auto& [token, prob] : result) {
-        prob /= sum;
+    for (auto& item : result) {
+        item.second /= sum;
     }
     
     return result;
@@ -246,7 +249,7 @@ std::vector<std::pair<int32_t, float>> Sampler::get_top_k_tokens(
 // ============================================================================
 
 int32_t GreedySampler::sample(float* logits, int vocab_size) {
-    return std::distance(logits, std::max_element(logits, logits + vocab_size));
+    return static_cast<int32_t>(std::distance(logits, std::max_element(logits, logits + vocab_size)));
 }
 
 // ============================================================================
@@ -290,15 +293,13 @@ int32_t MirostatSampler::sample(float* logits, int vocab_size) {
     
     // 找到满足surprise约束的截断点
     int k = 0;
-    float cumsum = 0.0f;
     
     for (int i = 0; i < vocab_size; i++) {
         float s = -std::log2(probs[i]);
         if (s > mu_) {
-            k = std::max(1, i);
+            k = (std::max)(1, i);
             break;
         }
-        cumsum += probs[i];
         k = i + 1;
     }
     

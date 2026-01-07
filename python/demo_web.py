@@ -803,7 +803,7 @@ HTML_TEMPLATE = """
 
             ws.onopen = () => {
                 const badge = document.getElementById('connectionStatus');
-                badge.classList.add('connected');
+                badge.classList.add('connected');    
                 badge.querySelector('span').textContent = '已连接';
             };
 
@@ -953,13 +953,22 @@ if HAS_FASTAPI:
 
                 if data.get("type") == "chat":
                     content = data.get("content", "")
+                    logger.info(f"Received chat message: {content[:50]}...")
 
                     if assistant:
-                        async for token in assistant.chat(content):
-                            await websocket.send_json({"type": "token", "content": token})
-                        await websocket.send_json({"type": "end"})
-                        status = assistant.get_vehicle_state()
-                        await websocket.send_json({"type": "status", "status": status})
+                        try:
+                            token_count = 0
+                            async for token in assistant.chat(content):
+                                token_count += 1
+                                await websocket.send_json({"type": "token", "content": token})
+                            logger.info(f"Chat completed, sent {token_count} tokens")
+                            await websocket.send_json({"type": "end"})
+                            status = assistant.get_vehicle_state()
+                            await websocket.send_json({"type": "status", "status": status})
+                        except Exception as e:
+                            logger.error(f"Error in chat generation: {e}", exc_info=True)
+                            await websocket.send_json({"type": "token", "content": f"错误: {str(e)}"})
+                            await websocket.send_json({"type": "end"})
                     else:
                         await websocket.send_json({"type": "token", "content": "助手未初始化"})
                         await websocket.send_json({"type": "end"})
@@ -971,7 +980,7 @@ if HAS_FASTAPI:
 
 
 def main(model_path: str, host: str = "0.0.0.0", port: int = 8000,
-         n_ctx: int = 4096, n_gpu_layers: int = 35):
+         n_ctx: int = 4096, n_gpu_layers: int = 0):
     global assistant
 
     if not HAS_FASTAPI:
@@ -999,7 +1008,7 @@ if __name__ == "__main__":
     parser.add_argument("--host", default="0.0.0.0", help="服务器地址")
     parser.add_argument("--port", type=int, default=8000, help="服务器端口")
     parser.add_argument("-c", "--ctx", type=int, default=4096, help="上下文长度")
-    parser.add_argument("-g", "--gpu-layers", type=int, default=35, help="GPU层数")
+    parser.add_argument("-g", "--gpu-layers", type=int, default=0, help="GPU层数")
 
     args = parser.parse_args()
     main(args.model_path, args.host, args.port, args.ctx, args.gpu_layers)

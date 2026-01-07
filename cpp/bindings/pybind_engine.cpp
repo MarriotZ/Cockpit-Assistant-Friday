@@ -1,6 +1,8 @@
 #include <pybind11/pybind11.h>
 #include <pybind11/stl.h>
 #include <pybind11/functional.h>
+#include <pybind11/gil.h>
+#include <Python.h>  // For PyGILState_Check
 
 #include "inference_engine.h"
 
@@ -94,13 +96,43 @@ PYBIND11_MODULE(cockpit_engine_py, m) {
                  // 包装Python回调
                  cockpit::StreamCallback cpp_callback = 
                      [callback](const std::string& token, bool is_end) {
-                         py::gil_scoped_acquire acquire;
-                         callback(token, is_end);
+                         // 在回调中，我们需要确保有 GIL
+                         // 使用 PyGILState_Ensure 来确保线程状态已初始化
+                         PyGILState_STATE gstate = PyGILState_Ensure();
+                         try {
+                             callback(token, is_end);
+                         } catch (py::error_already_set& e) {
+                             // Python 异常
+                             py::print("Python error in callback");
+                             e.restore();
+                             PyErr_Clear();  // 清除错误状态
+                         } catch (const std::exception& e) {
+                             // C++ 异常
+                             py::print("C++ error in callback:", e.what());
+                         } catch (...) {
+                             py::print("Unknown error in callback");
+                         }
+                         PyGILState_Release(gstate);
                      };
                  
-                 // 释放GIL进行推理
-                 py::gil_scoped_release release;
-                 return self.generate_stream(messages, cpp_callback, config);
+                 // 检查当前是否持有 GIL
+                 int gil_state = PyGILState_Check();
+                 bool has_gil = (gil_state == 1);
+                 
+                 if (has_gil) {
+                     // 在主线程中，释放 GIL 进行推理（让其他线程可以运行）
+                     py::gil_scoped_release release;
+                     return self.generate_stream(messages, cpp_callback, config);
+                 } else {
+                     // 在后台线程中，确保线程状态已初始化
+                     // PyGILState_Ensure 会初始化线程状态（如果还没有）并获取 GIL
+                     // 但我们不需要 GIL 来运行 C++ 代码，所以立即释放
+                     PyGILState_STATE gstate = PyGILState_Ensure();
+                     PyGILState_Release(gstate);
+                     
+                     // 现在直接调用，回调会自己管理 GIL
+                     return self.generate_stream(messages, cpp_callback, config);
+                 }
              },
              py::arg("messages"),
              py::arg("callback"),

@@ -76,7 +76,7 @@ class MockFunctionCall:
 class MockLLMEngine:
     """模拟LLM引擎（用于测试）"""
     
-    def __init__(self, model_path: str, n_ctx: int = 4096, n_gpu_layers: int = 35):
+    def __init__(self, model_path: str, n_ctx: int = 4096, n_gpu_layers: int = 0):
         self.model_path = model_path
         self.n_ctx = n_ctx
         self.n_gpu_layers = n_gpu_layers
@@ -209,8 +209,7 @@ class CockpitAssistant:
     """
     
     # 系统提示词模板
-    SYSTEM_PROMPT_TEMPLATE = '''你是一个智能汽车座舱助手，名叫小智，负责帮助驾驶员控制车辆功能。
-
+    SYSTEM_PROMPT_TEMPLATE = '''你是一个智能汽车座舱助手，名叫Friday，负责帮助驾驶员控制车辆功能。
 ## 你的能力
 1. 控制空调（开关、调节温度和风量）
 2. 控制车窗（打开、关闭、半开）
@@ -223,12 +222,10 @@ class CockpitAssistant:
 9. 查询天气
 
 ## 响应规则
-1. 用简洁友好的语气回复用户
-2. 回复要简短，适合语音播报（一般不超过50字）
-3. 当需要执行车辆控制时，在回复的最前面以JSON格式返回函数调用
-4. 函数调用格式: {{"name": "函数名", "arguments": {{"参数": "值"}}}}
-5. 如果用户请求不清楚，礼貌地询问更多信息
-6. 安全第一，如果检测到危险操作请提醒用户
+1. 回复要简短，适合语音播报（一般不超过50字）
+2. 当需要执行车辆控制时，在回复的最前面以JSON格式返回函数调用
+3. 函数调用格式: {{"name": "函数名", "arguments": {{"参数": "值"}}}}
+4. 如果用户请求不清楚，礼貌地询问更多信息
 
 ## 可用函数
 {functions}
@@ -250,8 +247,9 @@ class CockpitAssistant:
         self, 
         model_path: str,
         n_ctx: int = 4096,
-        n_gpu_layers: int = 35,
-        max_history: int = 20
+        n_gpu_layers: int = 0,
+        max_history: int = 20,
+        detailed_functions: bool = False
     ):
         """
         初始化座舱助手
@@ -259,8 +257,11 @@ class CockpitAssistant:
         Args:
             model_path: 模型文件路径
             n_ctx: 上下文长度
-            n_gpu_layers: GPU层数
+            n_gpu_layers: GPU层数（0表示CPU模式）
             max_history: 保留的最大对话历史轮数
+            detailed_functions: 是否使用详细的函数列表
+                               True: 完整格式（适合7B+大模型）
+                               False: 简洁格式（适合3B小模型）
         """
         # 初始化LLM引擎
         logger.info(f"Loading model: {model_path}")
@@ -283,8 +284,14 @@ class CockpitAssistant:
         
         # 构建系统提示词
         self._system_prompt = self.SYSTEM_PROMPT_TEMPLATE.format(
-            functions=get_function_prompt()
+            functions=get_function_prompt(detailed=detailed_functions)
         )
+        
+        # 记录提示词长度（用于调试）
+        prompt_length = len(self._system_prompt)
+        logger.info(f"System prompt length: {prompt_length} characters")
+        if prompt_length > 3000:
+            logger.warning(f"Prompt is very long ({prompt_length} chars), consider using detailed_functions=False for smaller models")
         
         logger.info("CockpitAssistant initialized successfully")
     
@@ -327,10 +334,15 @@ class CockpitAssistant:
         inference_thread.start()
         
         # 流式返回token
+        from queue import Empty as QueueEmpty
+        
         while True:
             try:
-                token, is_end = await asyncio.get_event_loop().run_in_executor(
-                    None, token_queue.get, True, 30.0
+                # 使用 run_in_executor 在线程池中执行阻塞的 queue.get 操作
+                loop = asyncio.get_event_loop()
+                token, is_end = await loop.run_in_executor(
+                    None,
+                    lambda: token_queue.get(timeout=30.0)
                 )
                 
                 if is_end:
@@ -339,7 +351,13 @@ class CockpitAssistant:
                 full_response += token
                 yield token
                 
-            except Exception:
+            except QueueEmpty:
+                # 超时，检查线程是否还在运行
+                if not inference_thread.is_alive():
+                    break
+                continue
+            except Exception as e:
+                logger.error(f"Error in chat stream: {e}", exc_info=True)
                 break
         
         inference_thread.join()
@@ -469,8 +487,20 @@ class AsyncCockpitAssistant:
 
 async def _test():
     """测试函数"""
-    # 使用模拟引擎测试
-    assistant = CockpitAssistant("mock_model.gguf")
+    # 使用实际模型路径（根据你的实际情况修改）
+    model_path = r"D:\Projects\Cockpit-Assistant-Friday\models\qwen2.5-3b-instruct-q4_k_m.gguf"
+    
+    # 如果文件不存在，使用相对路径
+    if not os.path.exists(model_path):
+        model_path = "models/qwen2.5-3b-instruct-q4_k_m.gguf"
+    
+    # 如果还是不存在，使用模拟引擎
+    if not os.path.exists(model_path):
+        print(f"警告: 模型文件不存在: {model_path}")
+        print("将使用模拟引擎进行测试")
+        model_path = "mock_model.gguf"
+    
+    assistant = CockpitAssistant(model_path)
     
     test_inputs = [
         "你好",

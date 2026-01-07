@@ -11,14 +11,12 @@
 #include <chrono>
 #include <regex>
 #include <fstream>
+#include <thread>
+#include <algorithm>
 
 using json = nlohmann::json;
 
 namespace cockpit {
-
-// ============================================================================
-// 实现细节
-// ============================================================================
 
 struct LLMEngine::Impl {
     llama_model* model = nullptr;
@@ -91,6 +89,48 @@ struct LLMEngine::Impl {
     }
 };
 
+// 获取vocab指针的辅助函数
+static const llama_vocab* get_vocab(llama_model* model) {
+    return llama_model_get_vocab(model);
+}
+
+// 获取vocab大小
+static int get_vocab_size(llama_model* model) {
+    const llama_vocab* vocab = get_vocab(model);
+    return llama_vocab_n_tokens(vocab);
+}
+
+// 辅助函数: 向batch添加token
+static void batch_add(llama_batch& batch, llama_token token, llama_pos pos, 
+                      const std::vector<llama_seq_id>& seq_ids, bool logits) {
+    batch.token[batch.n_tokens] = token;
+    batch.pos[batch.n_tokens] = pos;
+    batch.n_seq_id[batch.n_tokens] = static_cast<int32_t>(seq_ids.size());
+    for (size_t i = 0; i < seq_ids.size(); ++i) {
+        batch.seq_id[batch.n_tokens][i] = seq_ids[i];
+    }
+    batch.logits[batch.n_tokens] = logits;
+    batch.n_tokens++;
+}
+
+// ============================================================================
+// KV Cache
+// ============================================================================
+
+static void kv_cache_clear(llama_context* ctx) {
+    llama_memory_clear(llama_get_memory(ctx), true);
+    
+    // 旧版 API
+    // llama_kv_cache_clear(ctx);
+}
+
+static void kv_cache_seq_rm(llama_context* ctx, llama_seq_id seq_id, llama_pos p0, llama_pos p1) {
+    llama_memory_seq_rm(llama_get_memory(ctx), seq_id, p0, p1);
+    
+    // 旧版 API
+    // llama_kv_cache_seq_rm(ctx, seq_id, p0, p1);
+}
+
 // ============================================================================
 // 构造函数和析构函数
 // ============================================================================
@@ -107,7 +147,8 @@ LLMEngine::LLMEngine(const std::string& model_path, int n_ctx, int n_gpu_layers)
     pimpl_->config.model_path = model_path;
     pimpl_->config.n_ctx = n_ctx;
     pimpl_->config.n_gpu_layers = n_gpu_layers;
-    pimpl_->config.n_threads = std::max(1, (int)std::thread::hardware_concurrency() / 2);
+    unsigned int hw_threads = std::thread::hardware_concurrency();
+    pimpl_->config.n_threads = static_cast<int>((std::max)(1u, hw_threads / 2));
     
     if (!pimpl_->initialize()) {
         throw std::runtime_error("Failed to initialize LLM engine");
@@ -116,8 +157,24 @@ LLMEngine::LLMEngine(const std::string& model_path, int n_ctx, int n_gpu_layers)
 
 LLMEngine::~LLMEngine() = default;
 
-LLMEngine::LLMEngine(LLMEngine&&) noexcept = default;
-LLMEngine& LLMEngine::operator=(LLMEngine&&) noexcept = default;
+// 手动实现移动构造函数 (因为 std::atomic 不能被移动)
+LLMEngine::LLMEngine(LLMEngine&& other) noexcept
+    : pimpl_(std::move(other.pimpl_)),
+      stop_flag_(other.stop_flag_.load()),
+      stats_(other.stats_),
+      function_schema_(std::move(other.function_schema_)) {
+}
+
+// 手动实现移动赋值运算符 (因为 std::atomic 不能被移动)
+LLMEngine& LLMEngine::operator=(LLMEngine&& other) noexcept {
+    if (this != &other) {
+        pimpl_ = std::move(other.pimpl_);
+        stop_flag_.store(other.stop_flag_.load());
+        stats_ = other.stats_;
+        function_schema_ = std::move(other.function_schema_);
+    }
+    return *this;
+}
 
 bool LLMEngine::is_initialized() const {
     return pimpl_ && pimpl_->model && pimpl_->ctx;
@@ -146,16 +203,16 @@ std::string LLMEngine::generate_stream(
     // 分词
     std::vector<int32_t> tokens = pimpl_->tokenizer.encode(prompt, false, true);
     
-    stats_.prompt_tokens = tokens.size();
+    stats_.prompt_tokens = static_cast<int>(tokens.size());
     
     // 检查上下文长度
-    if (tokens.size() >= (size_t)pimpl_->config.n_ctx) {
+    if (tokens.size() >= static_cast<size_t>(pimpl_->config.n_ctx)) {
         throw std::runtime_error("Prompt too long for context window");
     }
     
     // 计算可复用的缓存
     int n_reuse = 0;
-    for (size_t i = 0; i < std::min(tokens.size(), pimpl_->token_history.size()); i++) {
+    for (size_t i = 0; i < (std::min)(tokens.size(), pimpl_->token_history.size()); i++) {
         if (tokens[i] == pimpl_->token_history[i]) {
             n_reuse++;
         } else {
@@ -165,19 +222,19 @@ std::string LLMEngine::generate_stream(
     
     // 如果需要清除部分缓存
     if (n_reuse < pimpl_->n_past) {
-        llama_kv_cache_seq_rm(pimpl_->ctx, 0, n_reuse, -1);
+        kv_cache_seq_rm(pimpl_->ctx, 0, n_reuse, -1);
         pimpl_->n_past = n_reuse;
     }
     
     // 处理新的prompt tokens
-    if ((int)tokens.size() > pimpl_->n_past) {
+    if (static_cast<int>(tokens.size()) > pimpl_->n_past) {
         std::vector<int32_t> new_tokens(tokens.begin() + pimpl_->n_past, tokens.end());
         
         // 批量处理
         llama_batch batch = llama_batch_init(pimpl_->config.n_batch, 0, 1);
         
         for (size_t i = 0; i < new_tokens.size(); i++) {
-            llama_batch_add(batch, new_tokens[i], pimpl_->n_past + i, {0}, false);
+            batch_add(batch, new_tokens[i], pimpl_->n_past + static_cast<int>(i), {0}, false);
         }
         batch.logits[batch.n_tokens - 1] = true;
         
@@ -187,7 +244,7 @@ std::string LLMEngine::generate_stream(
         }
         
         llama_batch_free(batch);
-        pimpl_->n_past = tokens.size();
+        pimpl_->n_past = static_cast<int>(tokens.size());
     }
     
     // 更新token历史
@@ -205,14 +262,16 @@ std::string LLMEngine::generate_stream(
     std::string result;
     std::vector<int32_t> generated_tokens;
     
+    // 获取vocab大小
+    int vocab_size = get_vocab_size(pimpl_->model);
+    
     for (int i = 0; i < config.max_tokens; i++) {
-        if (stop_flag_) {
+        if (stop_flag_.load()) {
             break;
         }
         
         // 获取logits
         float* logits = llama_get_logits_ith(pimpl_->ctx, -1);
-        int vocab_size = llama_n_vocab(pimpl_->model);
         
         // 采样
         int32_t new_token = pimpl_->sampler.sample(logits, vocab_size, generated_tokens);
@@ -251,7 +310,7 @@ std::string LLMEngine::generate_stream(
         
         // 解码下一个token
         llama_batch batch = llama_batch_init(1, 0, 1);
-        llama_batch_add(batch, new_token, pimpl_->n_past, {0}, true);
+        batch_add(batch, new_token, pimpl_->n_past, {0}, true);
         
         if (llama_decode(pimpl_->ctx, batch) != 0) {
             llama_batch_free(batch);
@@ -271,8 +330,8 @@ std::string LLMEngine::generate_stream(
     auto end_time = std::chrono::high_resolution_clock::now();
     auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(end_time - start_time);
     
-    stats_.tokens_generated = generated_tokens.size();
-    stats_.generation_time_ms = duration.count();
+    stats_.tokens_generated = static_cast<int>(generated_tokens.size());
+    stats_.generation_time_ms = static_cast<float>(duration.count());
     stats_.tokens_per_second = stats_.tokens_generated / (stats_.generation_time_ms / 1000.0f);
     stats_.context_tokens = pimpl_->n_past;
     
@@ -295,14 +354,10 @@ void LLMEngine::set_function_schema(const std::string& function_schema) {
 }
 
 std::optional<FunctionCall> LLMEngine::parse_function_call(const std::string& response) {
-    // 尝试解析JSON格式的函数调用
-    // 格式1: {"name": "func_name", "arguments": {...}}
-    // 格式2: <function_call>{"name": "func_name", "arguments": {...}}</function_call>
-    // 格式3: <tool_call>...</tool_call>
-    
+    // 解析JSON格式的函数调用
     std::vector<std::regex> patterns = {
-        std::regex(R"(<function_call>\s*(\{.*?\})\s*</function_call>)", std::regex::dotall),
-        std::regex(R"(<tool_call>\s*(\{.*?\})\s*</tool_call>)", std::regex::dotall),
+        std::regex(R"(<function_call>\s*(\{[\s\S]*?\})\s*</function_call>)"),
+        std::regex(R"(<tool_call>\s*(\{[\s\S]*?\})\s*</tool_call>)"),
         std::regex(R"(\{[^{}]*"name"\s*:\s*"[^"]+"\s*,\s*"arguments"\s*:\s*\{[^{}]*\}[^{}]*\})"),
     };
     
@@ -344,7 +399,7 @@ std::optional<FunctionCall> LLMEngine::parse_function_call(const std::string& re
 
 void LLMEngine::clear_cache() {
     if (pimpl_->ctx) {
-        llama_kv_cache_clear(pimpl_->ctx);
+        kv_cache_clear(pimpl_->ctx);
         pimpl_->n_past = 0;
         pimpl_->token_history.clear();
     }
@@ -361,8 +416,6 @@ bool LLMEngine::save_session(const std::string& path) {
     file.write(reinterpret_cast<const char*>(&size), sizeof(size));
     file.write(reinterpret_cast<const char*>(pimpl_->token_history.data()), 
                size * sizeof(int32_t));
-    
-    // TODO: 保存KV缓存状态
     
     return true;
 }
@@ -382,7 +435,6 @@ bool LLMEngine::load_session(const std::string& path) {
     
     // 重新处理tokens
     clear_cache();
-    // TODO: 恢复KV缓存状态
     
     return true;
 }
@@ -406,10 +458,12 @@ void LLMEngine::stop_generation() {
 std::string LLMEngine::get_model_info() const {
     if (!is_initialized()) return "Not initialized";
     
+    int vocab_size = get_vocab_size(pimpl_->model);
+    
     std::stringstream ss;
     ss << "Model: " << pimpl_->config.model_path << "\n";
     ss << "Context size: " << pimpl_->config.n_ctx << "\n";
-    ss << "Vocab size: " << llama_n_vocab(pimpl_->model) << "\n";
+    ss << "Vocab size: " << vocab_size << "\n";
     ss << "Embedding size: " << llama_n_embd(pimpl_->model) << "\n";
     
     return ss.str();
@@ -423,4 +477,4 @@ int LLMEngine::get_max_context() const {
     return pimpl_ ? pimpl_->config.n_ctx : 0;
 }
 
-} // namespace cockpit
+} 

@@ -74,7 +74,7 @@ set(ENGINE_SOURCES
 )
 
 # 推理引擎库
-add_library(cockpit_engine ${ENGINE_SOURCES})
+add_library(cockpit_engine STATIC ${ENGINE_SOURCES})
 target_link_libraries(cockpit_engine 
     PUBLIC 
         Threads::Threads
@@ -123,11 +123,36 @@ if(BUILD_TESTS)
     add_executable(test_engine tests/test_engine.cpp)
     target_link_libraries(test_engine PRIVATE cockpit_engine GTest::gtest_main)
     
+    # Windows下将DLL复制到可执行文件目录
+    if(WIN32)
+        # 复制gtest DLL到可执行文件目录
+        add_custom_command(TARGET test_engine POST_BUILD
+            COMMAND ${CMAKE_COMMAND} -E copy_if_different
+                "$<TARGET_FILE:GTest::gtest>"
+                "$<TARGET_FILE_DIR:test_engine>"
+            COMMAND ${CMAKE_COMMAND} -E copy_if_different
+                "$<TARGET_FILE:GTest::gtest_main>"
+                "$<TARGET_FILE_DIR:test_engine>"
+            COMMENT "Copying test DLLs to test executable directory"
+        )
+        
+        if(EXISTS "${LLAMA_CPP_DIR}/CMakeLists.txt")
+            add_custom_command(TARGET test_engine POST_BUILD
+                COMMAND ${CMAKE_COMMAND} -E copy_if_different
+                    "$<TARGET_FILE:llama>"
+                    "$<TARGET_FILE_DIR:test_engine>"
+                COMMAND ${CMAKE_COMMAND} -E copy_if_different
+                    "$<TARGET_FILE:ggml>"
+                    "$<TARGET_FILE_DIR:test_engine>"
+                COMMENT "Copying llama.cpp DLLs to test executable directory"
+            )
+        endif()
+    endif()
+    
     include(GoogleTest)
     gtest_discover_tests(test_engine)
 endif()
 
-# 安装
 install(TARGETS cockpit_engine
     LIBRARY DESTINATION lib
     ARCHIVE DESTINATION lib
@@ -136,7 +161,6 @@ install(TARGETS cockpit_engine
 
 install(DIRECTORY cpp/include/ DESTINATION include/cockpit)
 
-# 打印配置信息
 message(STATUS "====================================")
 message(STATUS "Cockpit Assistant Configuration:")
 message(STATUS "  Build type: ${CMAKE_BUILD_TYPE}")

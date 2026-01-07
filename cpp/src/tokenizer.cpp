@@ -12,23 +12,36 @@ Tokenizer::Tokenizer() = default;
 Tokenizer::~Tokenizer() = default;
 
 bool Tokenizer::load_from_model(const std::string& model_path) {
-    // 这个方法主要用于独立加载分词器
-    // 通常我们通过init_from_llama_model来初始化
+    // 主要用于独立加载分词器
+    // 通常通过init_from_llama_model来初始化
     return false;  // TODO: 实现独立加载
+}
+
+// ============================================================================
+// 辅助函数: 获取vocab指针
+// ============================================================================
+static const llama_vocab* get_model_vocab(llama_model* model) {
+    return llama_model_get_vocab(model);
+}
+
+// 获取vocab大小
+static int32_t get_vocab_size(const llama_vocab* vocab) {
+    return llama_vocab_n_tokens(vocab);
 }
 
 void Tokenizer::init_from_llama_model(void* model) {
     llama_model_ = model;
-    auto* llama_model = static_cast<llama_model*>(model);
+    llama_model* lmodel = static_cast<llama_model*>(model);
+    const llama_vocab* vocab = get_model_vocab(lmodel);
     
-    vocab_size_ = llama_n_vocab(llama_model);
+    vocab_size_ = get_vocab_size(vocab);
     
     // 获取特殊tokens
-    special_tokens_.bos_token = llama_token_bos(llama_model);
-    special_tokens_.eos_token = llama_token_eos(llama_model);
-    special_tokens_.pad_token = llama_token_pad(llama_model);
+    special_tokens_.bos_token = llama_vocab_bos(vocab);
+    special_tokens_.eos_token = llama_vocab_eos(vocab);
+    special_tokens_.pad_token = llama_vocab_pad(vocab);
     
-    // 尝试找到ChatML特殊tokens
+    // 找ChatML特殊tokens
     // 这些token的ID因模型而异，需要通过文本查找
     for (int32_t i = 0; i < vocab_size_; i++) {
         std::string token_text = get_token_text(i);
@@ -50,7 +63,8 @@ ChatTemplateType Tokenizer::detect_template_type() {
     }
     
     // 检查是否有Llama风格的tokens
-    for (int32_t i = 0; i < std::min(vocab_size_, (int32_t)10000); i++) {
+    int32_t check_limit = (std::min)(vocab_size_, (int32_t)10000);
+    for (int32_t i = 0; i < check_limit; i++) {
         std::string token_text = get_token_text(i);
         if (token_text.find("[INST]") != std::string::npos) {
             return ChatTemplateType::LLAMA2;
@@ -73,17 +87,18 @@ std::vector<int32_t> Tokenizer::encode(
         return {};
     }
     
-    auto* model = static_cast<llama_model*>(llama_model_);
+    llama_model* model = static_cast<llama_model*>(llama_model_);
+    const llama_vocab* vocab = get_model_vocab(model);
     
     // 预分配足够的空间
     std::vector<int32_t> tokens(text.length() + 16);
     
     int n_tokens = llama_tokenize(
-        model,
+        vocab,
         text.c_str(),
-        text.length(),
+        static_cast<int32_t>(text.length()),
         tokens.data(),
-        tokens.size(),
+        static_cast<int32_t>(tokens.size()),
         add_bos,
         special
     );
@@ -92,11 +107,11 @@ std::vector<int32_t> Tokenizer::encode(
         // 需要更多空间
         tokens.resize(-n_tokens);
         n_tokens = llama_tokenize(
-            model,
+            vocab,
             text.c_str(),
-            text.length(),
+            static_cast<int32_t>(text.length()),
             tokens.data(),
-            tokens.size(),
+            static_cast<int32_t>(tokens.size()),
             add_bos,
             special
         );
@@ -125,10 +140,11 @@ std::string Tokenizer::decode_token(int32_t token) {
         return "";
     }
     
-    auto* model = static_cast<llama_model*>(llama_model_);
+    llama_model* model = static_cast<llama_model*>(llama_model_);
+    const llama_vocab* vocab = get_model_vocab(model);
     
     char buf[256];
-    int n = llama_token_to_piece(model, token, buf, sizeof(buf), 0, true);
+    int n = llama_token_to_piece(vocab, token, buf, sizeof(buf), 0, true);
     
     if (n < 0) {
         return "";
@@ -142,10 +158,11 @@ std::string Tokenizer::get_token_text(int32_t token) const {
         return "";
     }
     
-    auto* model = static_cast<llama_model*>(llama_model_);
+    llama_model* model = static_cast<llama_model*>(llama_model_);
+    const llama_vocab* vocab = get_model_vocab(model);
     
     char buf[256];
-    int n = llama_token_to_piece(model, token, buf, sizeof(buf), 0, false);
+    int n = llama_token_to_piece(vocab, token, buf, sizeof(buf), 0, false);
     
     if (n < 0) {
         return "";
@@ -202,8 +219,8 @@ std::string Tokenizer::apply_chatml_template(
 ) {
     std::ostringstream ss;
     
-    for (const auto& [role, content] : messages) {
-        ss << "<|im_start|>" << role << "\n" << content << "<|im_end|>\n";
+    for (const auto& msg : messages) {
+        ss << "<|im_start|>" << msg.first << "\n" << msg.second << "<|im_end|>\n";
     }
     
     if (add_generation_prompt) {
@@ -221,7 +238,10 @@ std::string Tokenizer::apply_llama2_template(
     bool first_user = true;
     std::string system_msg;
     
-    for (const auto& [role, content] : messages) {
+    for (const auto& msg : messages) {
+        const std::string& role = msg.first;
+        const std::string& content = msg.second;
+        
         if (role == "system") {
             system_msg = content;
         } else if (role == "user") {
@@ -247,9 +267,9 @@ std::string Tokenizer::apply_llama3_template(
     
     ss << "<|begin_of_text|>";
     
-    for (const auto& [role, content] : messages) {
-        ss << "<|start_header_id|>" << role << "<|end_header_id|>\n\n";
-        ss << content << "<|eot_id|>";
+    for (const auto& msg : messages) {
+        ss << "<|start_header_id|>" << msg.first << "<|end_header_id|>\n\n";
+        ss << msg.second << "<|eot_id|>";
     }
     
     if (add_generation_prompt) {
