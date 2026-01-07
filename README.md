@@ -29,7 +29,7 @@
 ```bash
 # 克隆项目
 git clone https://github.com/MarriotZ/Cockpit-Assistant-Friday
-cd cockpit-assistant
+cd cockpit-assistant-friday
 
 # 安装Python依赖
 pip install -r requirements.txt
@@ -129,7 +129,7 @@ inference:
 voice:
   asr_model: "small"
   tts_voice: "zh-CN-XiaoxiaoNeural"
-  wake_word: "小助手"
+  wake_word: "Hey Friday"
 ```
 
 ## API使用示例
@@ -174,15 +174,15 @@ async for audio_chunk in assistant.process_voice_input(audio_data):
 | `make_phone_call` | 拨打电话 | contact |
 
 ## 性能指标
-
-在NVIDIA RTX 4090上使用Qwen2.5-7B-Instruct-Q4_K_M：
+待重测，代码进行了优化
+~在NVIDIA RTX 4090上使用Qwen2.5-7B-Instruct-Q4_K_M：
 
 | 指标 | 数值 |
 |------|------|
 | 首Token延迟 | ~150ms |
 | 生成速度 | ~45 tokens/s |
 | 内存占用 | ~6GB |
-| ASR延迟 | ~200ms |
+| ASR延迟 | ~200ms |~
 
 ## 扩展开发
 
