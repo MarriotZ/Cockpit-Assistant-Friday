@@ -41,11 +41,14 @@ pip install -r requirements.txt
 ### 2. 下载模型
 
 ```bash
-# 下载推荐的Qwen2.5-7B-Instruct模型
+# 中文语境下推荐QWen3-4B
+<del>
+Qwen2.5-7B-Instruct模型
 ./scripts/download_model.sh qwen2.5-7b
 
 # 或者使用较小的3B模型（适合低配设备）
 ./scripts/download_model.sh qwen2.5-3b
+</del>
 ```
 
 ### 3. 编译C++推理引擎
