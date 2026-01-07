@@ -176,15 +176,18 @@ async for audio_chunk in assistant.process_voice_input(audio_data):
 ## 性能指标
 待重测，代码进行了优化
 
-~~在 NVIDIA RTX 4090 上使用 Qwen2.5-7B-Instruct-Q4_K_M：
+<del>
+
+在 NVIDIA RTX 4090 上使用 Qwen2.5-7B-Instruct-Q4_K_M：
 
 | 指标 | 数值 |
 |------|------|
 | 首Token延迟 | ~150ms |
 | 生成速度 | ~45 tokens/s |
 | 内存占用 | ~6GB |
-| ASR延迟 | ~200ms |~~
+| ASR延迟 | ~200ms |
 
+</del>
 
 ## 扩展开发
 
