@@ -40,16 +40,18 @@ pip install -r requirements.txt
 
 ### 2. 下载模型
 
-<del>
-
 ```bash
-# 兼容多模型，中文语境下推荐QWen3-4B
+# 推荐3B模型体验（功能满足，适配各类设备）
+./scripts/download_model.sh qwen2.5-3b
+```
+
+<del>
+# 兼容多模型，可进一步使用QWen3-4B，但需开启（或关闭思考模式）过滤<think></think>标签
 Qwen2.5-7B-Instruct模型
 ./scripts/download_model.sh qwen2.5-7b
 
 #或者使用较小的3B模型（适合低配设备）
 ./scripts/download_model.sh qwen2.5-3b
-```
 
 </del>
 
