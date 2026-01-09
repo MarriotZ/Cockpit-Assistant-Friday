@@ -7,7 +7,7 @@
 namespace cockpit {
 
 // ============================================================================
-// KVCacheManager 实现
+// KVCacheManager
 // ============================================================================
 
 KVCacheManager::KVCacheManager(const CacheConfig& config) : config_(config) {
@@ -15,7 +15,7 @@ KVCacheManager::KVCacheManager(const CacheConfig& config) : config_(config) {
 }
 
 KVCacheManager::~KVCacheManager() {
-    // cache_data_由llama.cpp管理，不需要手动释放
+    // cache_data_由llama.cpp管理
 }
 
 int KVCacheManager::check_reusable(const std::vector<int32_t>& new_tokens) const {
@@ -66,7 +66,7 @@ std::vector<uint8_t> KVCacheManager::serialize() const {
                 token_history_.data(), 
                 n_tokens * sizeof(int32_t));
     
-    // TODO: 序列化实际的KV缓存数据
+    // TODO: 序列化KV缓存数据
     
     return data;
 }
@@ -109,7 +109,7 @@ size_t KVCacheManager::get_memory_usage() const {
 }
 
 // ============================================================================
-// PrefixCacheManager 实现
+// PrefixCacheManager
 // ============================================================================
 
 PrefixCacheManager::PrefixCacheManager(size_t max_entries) 
@@ -138,7 +138,7 @@ int PrefixCacheManager::find_prefix(const std::vector<int32_t>& tokens) const {
             }
         }
         
-        // 只有当entry完全是tokens的前缀时才算匹配
+        // 当entry完全是tokens的前缀时才匹配
         if (match_len == entry.tokens.size() && match_len > best_match_len) {
             best_match = i;
             best_match_len = match_len;
@@ -184,7 +184,7 @@ const PrefixCacheManager::PrefixEntry* PrefixCacheManager::get_entry(int index) 
         return nullptr;
     }
     
-    // 更新访问信息（const_cast因为这是一个逻辑上的const操作）
+    // 更新访问信息
     auto& entry = const_cast<PrefixEntry&>(entries_[index]);
     entry.last_access_time = 
         std::chrono::system_clock::now().time_since_epoch().count();

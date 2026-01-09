@@ -69,8 +69,7 @@ int main(int argc, char** argv) {
         std::cout << "Model loaded successfully!\n";
         std::cout << engine.get_model_info() << "\n";
         
-        // 系统提示
-        const std::string system_prompt = R"(你是一个智能汽车座舱助手，负责帮助驾驶员控制车辆功能。
+        const std::string system_prompt = R"(你是一个智能汽车座舱助手，名为Friday，负责帮助驾驶员控制车辆功能。
 
 你可以执行以下操作：
 1. 控制空调（开关、调节温度和风量）
@@ -103,7 +102,6 @@ int main(int argc, char** argv) {
         
         std::cout << "Type 'quit' to exit, 'clear' to reset conversation\n\n";
         
-        // 主循环
         while (true) {
             std::cout << "User: ";
             std::string input;

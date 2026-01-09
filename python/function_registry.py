@@ -1,16 +1,17 @@
 """
-Function Registry - 车辆控制函数定义
+Function Registry
 
-定义智能座舱助手可调用的所有函数及其参数schema
+Defines all callable functions and their parameter schemas for the cockpit assistant.
 """
 
 import json
 from typing import Dict, Any, List, Optional
 from dataclasses import dataclass, field
 
+
 @dataclass
 class FunctionParameter:
-    """函数参数定义"""
+    """Function parameter definition"""
     name: str
     type: str
     description: str
@@ -20,15 +21,16 @@ class FunctionParameter:
     maximum: Optional[float] = None
     default: Any = None
 
+
 @dataclass
 class FunctionDefinition:
-    """函数定义"""
+    """Function definition"""
     name: str
     description: str
     parameters: List[FunctionParameter] = field(default_factory=list)
     
     def to_schema(self) -> Dict[str, Any]:
-        """转换为JSON Schema格式"""
+        """Convert to JSON Schema format"""
         properties = {}
         required = []
         
@@ -61,31 +63,31 @@ class FunctionDefinition:
 
 
 class FunctionRegistry:
-    """函数注册表"""
+    """Function registry"""
     
     def __init__(self):
         self.functions: Dict[str, FunctionDefinition] = {}
         self._register_default_functions()
     
     def _register_default_functions(self):
-        """注册默认的车辆控制函数"""
+        """Register default vehicle control functions"""
         
-        # 空调控制
+        # Air conditioner control
         self.register(FunctionDefinition(
             name="control_air_conditioner",
-            description="控制车内空调，包括开关、温度调节、风量调节",
+            description="Control vehicle AC: on/off, temperature, fan speed",
             parameters=[
                 FunctionParameter(
                     name="action",
                     type="string",
-                    description="操作类型：on(打开), off(关闭), adjust(调节)",
+                    description="Action type: on, off, adjust",
                     required=True,
                     enum=["on", "off", "adjust"]
                 ),
                 FunctionParameter(
                     name="temperature",
                     type="number",
-                    description="目标温度（摄氏度）",
+                    description="Target temperature (Celsius)",
                     minimum=16,
                     maximum=30,
                     default=24
@@ -93,7 +95,7 @@ class FunctionRegistry:
                 FunctionParameter(
                     name="fan_speed",
                     type="integer",
-                    description="风量档位（1-5）",
+                    description="Fan level (1-5)",
                     minimum=1,
                     maximum=5,
                     default=3
@@ -101,287 +103,284 @@ class FunctionRegistry:
                 FunctionParameter(
                     name="mode",
                     type="string",
-                    description="空调模式",
+                    description="AC mode",
                     enum=["auto", "cool", "heat", "fan", "dry"]
                 )
             ]
         ))
         
-        # 车窗控制
+        # Window control
         self.register(FunctionDefinition(
             name="control_window",
-            description="控制车窗的开关状态",
+            description="Control vehicle windows",
             parameters=[
                 FunctionParameter(
                     name="position",
                     type="string",
-                    description="车窗位置：front_left(左前), front_right(右前), rear_left(左后), rear_right(右后), all(全部)",
+                    description="Window position: front_left, front_right, rear_left, rear_right, all",
                     required=True,
                     enum=["front_left", "front_right", "rear_left", "rear_right", "all"]
                 ),
                 FunctionParameter(
                     name="action",
                     type="string",
-                    description="操作类型：open(打开), close(关闭), half_open(半开)",
+                    description="Action type: open, close, half_open",
                     required=True,
                     enum=["open", "close", "half_open"]
                 ),
                 FunctionParameter(
                     name="percentage",
                     type="integer",
-                    description="开启百分比（0-100）",
+                    description="Open percentage (0-100)",
                     minimum=0,
                     maximum=100
                 )
             ]
         ))
         
-        # 导航
+        # Navigation
         self.register(FunctionDefinition(
             name="navigate_to",
-            description="设置导航目的地，支持地点名称或地址",
+            description="Set navigation destination by name or address",
             parameters=[
                 FunctionParameter(
                     name="destination",
                     type="string",
-                    description="目的地名称或地址",
+                    description="Destination name or address",
                     required=True
                 ),
                 FunctionParameter(
                     name="via_points",
                     type="array",
-                    description="途经点列表"
+                    description="List of waypoints"
                 ),
                 FunctionParameter(
                     name="avoid",
                     type="array",
-                    description="需要避开的路况（toll:收费站, highway:高速, ferry:轮渡）"
+                    description="Conditions to avoid: toll, highway, ferry"
                 ),
                 FunctionParameter(
                     name="route_preference",
                     type="string",
-                    description="路线偏好",
+                    description="Route preference",
                     enum=["fastest", "shortest", "economical"]
                 )
             ]
         ))
         
-        # 音乐控制
+        # Music control
         self.register(FunctionDefinition(
             name="play_music",
-            description="播放音乐，支持搜索歌曲或控制播放",
+            description="Play music: search or control playback",
             parameters=[
                 FunctionParameter(
                     name="query",
                     type="string",
-                    description="搜索关键词（歌曲名、歌手名、专辑名等）"
+                    description="Search keywords (song, artist, album)"
                 ),
                 FunctionParameter(
                     name="action",
                     type="string",
-                    description="播放操作",
+                    description="Playback action",
                     enum=["play", "pause", "stop", "next", "previous", "shuffle", "repeat"]
                 ),
                 FunctionParameter(
                     name="volume",
                     type="integer",
-                    description="音量（0-100）",
+                    description="Volume (0-100)",
                     minimum=0,
                     maximum=100
                 ),
                 FunctionParameter(
                     name="source",
                     type="string",
-                    description="音乐来源",
+                    description="Music source",
                     enum=["local", "bluetooth", "usb", "online"]
                 )
             ]
         ))
         
-        # 车辆状态查询
+        # Vehicle status query
         self.register(FunctionDefinition(
             name="get_vehicle_status",
-            description="查询车辆各项状态信息",
+            description="Query vehicle status information",
             parameters=[
                 FunctionParameter(
                     name="info_type",
                     type="string",
-                    description="查询类型：battery(电池/油量), tire_pressure(胎压), oil(机油), mileage(里程), temperature(车内温度), all(全部)",
+                    description="Query type: battery, tire_pressure, oil, mileage, temperature, doors, lights, all",
                     required=True,
                     enum=["battery", "tire_pressure", "oil", "mileage", "temperature", "doors", "lights", "all"]
                 )
             ]
         ))
         
-        # 车灯控制
+        # Light control
         self.register(FunctionDefinition(
             name="control_lights",
-            description="控制车辆灯光",
+            description="Control vehicle lights",
             parameters=[
                 FunctionParameter(
                     name="light_type",
                     type="string",
-                    description="灯光类型",
+                    description="Light type",
                     required=True,
                     enum=["headlight", "highbeam", "fog", "interior", "hazard", "turn_left", "turn_right"]
                 ),
                 FunctionParameter(
                     name="action",
                     type="string",
-                    description="操作类型",
+                    description="Action type",
                     required=True,
                     enum=["on", "off", "auto"]
                 ),
                 FunctionParameter(
                     name="brightness",
                     type="integer",
-                    description="亮度（仅适用于内饰灯）",
+                    description="Brightness (interior light only)",
                     minimum=0,
                     maximum=100
                 )
             ]
         ))
         
-        # 座椅控制
+        # Seat control
         self.register(FunctionDefinition(
             name="control_seat",
-            description="控制座椅位置和功能",
+            description="Control seat position and functions",
             parameters=[
                 FunctionParameter(
                     name="seat",
                     type="string",
-                    description="座椅位置",
+                    description="Seat position",
                     required=True,
                     enum=["driver", "passenger", "rear_left", "rear_right"]
                 ),
                 FunctionParameter(
                     name="function",
                     type="string",
-                    description="功能类型",
+                    description="Function type",
                     required=True,
                     enum=["heating", "cooling", "massage", "position", "memory"]
                 ),
                 FunctionParameter(
                     name="level",
                     type="integer",
-                    description="强度/档位（1-3）",
+                    description="Intensity level (0-3)",
                     minimum=0,
                     maximum=3
                 ),
                 FunctionParameter(
                     name="memory_slot",
                     type="integer",
-                    description="记忆位置（1-3）",
+                    description="Memory position (1-3)",
                     minimum=1,
                     maximum=3
                 )
             ]
         ))
         
-        # 电话控制
+        # Phone control
         self.register(FunctionDefinition(
             name="make_phone_call",
-            description="拨打电话或管理通话",
+            description="Make or manage phone calls",
             parameters=[
                 FunctionParameter(
                     name="action",
                     type="string",
-                    description="操作类型",
+                    description="Action type",
                     required=True,
                     enum=["call", "answer", "hangup", "reject", "mute"]
                 ),
                 FunctionParameter(
                     name="contact",
                     type="string",
-                    description="联系人姓名或电话号码"
+                    description="Contact name or phone number"
                 )
             ]
         ))
         
-        # 天气查询
+        # Weather query
         self.register(FunctionDefinition(
             name="get_weather",
-            description="查询天气信息",
+            description="Query weather information",
             parameters=[
                 FunctionParameter(
                     name="location",
                     type="string",
-                    description="查询地点（默认当前位置）"
+                    description="Location (default: current location)"
                 ),
                 FunctionParameter(
                     name="type",
                     type="string",
-                    description="查询类型",
+                    description="Query type",
                     enum=["current", "forecast", "hourly"]
                 )
             ]
         ))
     
     def register(self, func_def: FunctionDefinition):
-        """注册函数"""
+        """Register a function"""
         self.functions[func_def.name] = func_def
     
     def get(self, name: str) -> Optional[FunctionDefinition]:
-        """获取函数定义"""
+        """Get function definition by name"""
         return self.functions.get(name)
     
     def get_all_schemas(self) -> List[Dict[str, Any]]:
-        """获取所有函数的schema"""
+        """Get schemas for all functions"""
         return [f.to_schema() for f in self.functions.values()]
     
     def to_json_schema(self) -> str:
-        """生成完整的JSON schema字符串"""
+        """Generate complete JSON schema string"""
         return json.dumps({
             "functions": self.get_all_schemas()
         }, ensure_ascii=False, indent=2)
     
     def get_system_prompt_functions(self, detailed: bool = True) -> str:
         """
-        生成用于系统提示词的函数说明
+        Generate function descriptions for system prompt
         
         Args:
-            detailed: 是否包含详细参数信息
-                     True: 完整格式（函数名+描述+参数）
-                     False: 简洁格式（仅函数名+简要描述）
+            detailed: Include detailed parameter info
+                     True: Full format (name + description + parameters)
+                     False: Compact format (name + brief description only)
         """
-        lines = ["可用的函数："]
+        lines = ["Available functions:"]
         for func in self.functions.values():
             if detailed:
-                # 详细模式：包含参数信息
                 params = []
                 for p in func.parameters:
                     param_str = f"{p.name}: {p.type}"
                     if p.enum:
                         param_str += f" ({'/'.join(p.enum)})"
                     if p.required:
-                        param_str += " [必需]"
+                        param_str += " [required]"
                     params.append(param_str)
                 
                 lines.append(f"- {func.name}: {func.description}")
                 if params:
-                    lines.append(f"  参数: {', '.join(params)}")
+                    lines.append(f"  Parameters: {', '.join(params)}")
             else:
-                # 简洁模式：仅函数名和简要描述
                 lines.append(f"- {func.name}: {func.description}")
         
         return "\n".join(lines)
 
 
-# 创建默认注册表实例
 default_registry = FunctionRegistry()
 
 
 def get_function_schema() -> str:
-    """获取默认函数schema"""
+    """Get JSON schema for all functions"""
     return default_registry.to_json_schema()
 
 
 def get_function_prompt(detailed: bool = True) -> str:
     """
-    获取函数说明提示词
+    Get function description prompt
     
     Args:
-        detailed: 是否包含详细参数信息（默认True，适合大模型）
-                  False: 简洁格式（适合小模型如3B）
+        detailed: Include detailed parameter info (default True for large models)
+                  False: Compact format (suitable for smaller models like 3B)
     """
     return default_registry.get_system_prompt_functions(detailed=detailed)

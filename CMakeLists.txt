@@ -74,7 +74,7 @@ set(ENGINE_SOURCES
 )
 
 # 推理引擎库
-add_library(cockpit_engine STATIC ${ENGINE_SOURCES})
+add_library(cockpit_engine ${ENGINE_SOURCES})
 target_link_libraries(cockpit_engine 
     PUBLIC 
         Threads::Threads
@@ -98,6 +98,7 @@ if(BUILD_PYTHON_BINDINGS)
         GIT_REPOSITORY https://github.com/pybind/pybind11.git
         GIT_TAG v2.13
     )
+    set(PYBIND11_FINDPYTHON ON CACHE BOOL "" FORCE)
     FetchContent_MakeAvailable(pybind11)
     
     pybind11_add_module(cockpit_engine_py cpp/bindings/pybind_engine.cpp)

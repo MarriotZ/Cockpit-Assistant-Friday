@@ -11,7 +11,6 @@ PROJECT_DIR="$(dirname "$SCRIPT_DIR")"
 THIRD_PARTY_DIR="$PROJECT_DIR/third_party"
 LLAMA_CPP_DIR="$THIRD_PARTY_DIR/llama.cpp"
 
-# 颜色定义
 RED='\033[0;31m'
 GREEN='\033[0;32m'
 YELLOW='\033[1;33m'
@@ -40,11 +39,14 @@ cd "$LLAMA_CPP_DIR"
 
 # 检测CUDA
 USE_CUDA="OFF"
-if command -v nvcc &> /dev/null; then
-    echo -e "${GREEN}检测到 CUDA，将启用 GPU 加速${NC}"
+CUDA_ROOT_CMAKE="C:/Program Files/NVIDIA GPU Computing Toolkit/CUDA/v13.1"
+CUDA_NVCC_GITBASH="/c/Program Files/NVIDIA GPU Computing Toolkit/CUDA/v13.1/bin/nvcc.exe"
+
+if [ -f "$CUDA_NVCC_GITBASH" ]; then
+    echo -e "${GREEN}检测到 CUDA Toolkit：${CUDA_ROOT_CMAKE}，将启用 GPU 加速${NC}"
     USE_CUDA="ON"
 else
-    echo -e "${YELLOW}未检测到 CUDA，将使用 CPU 模式${NC}"
+    echo -e "${YELLOW}未检测到 nvcc.exe，将使用 CPU 模式${NC}"
 fi
 
 # 检测Metal (macOS)
@@ -60,18 +62,27 @@ cd build
 
 # 配置CMake
 echo -e "${GREEN}正在配置 CMake...${NC}"
-cmake .. \
-    -DCMAKE_BUILD_TYPE=Release \
-    -DGGML_CUDA=$USE_CUDA \
-    -DGGML_METAL=$USE_METAL \
-    -DLLAMA_CURL=OFF \
-    -DLLAMA_BUILD_TESTS=OFF \
-    -DLLAMA_BUILD_EXAMPLES=ON \
-    -DLLAMA_BUILD_SERVER=ON
 
+CMAKE_ARGS=(
+  -DCMAKE_BUILD_TYPE=Release
+  -DGGML_CUDA=$USE_CUDA
+  -DGGML_METAL=$USE_METAL
+  -DLLAMA_CURL=OFF
+  -DLLAMA_BUILD_TESTS=OFF
+  -DLLAMA_BUILD_EXAMPLES=ON
+  -DLLAMA_BUILD_SERVER=ON
+)
+
+if [ "$USE_CUDA" = "ON" ]; then
+  CMAKE_ARGS+=(
+    -DCUDAToolkit_ROOT="$CUDA_ROOT_CMAKE"
+    -DCMAKE_CUDA_COMPILER="$CUDA_ROOT_CMAKE/bin/nvcc.exe"
+  )
+fi
+cmake .. "${CMAKE_ARGS[@]}"
 # 编译
 echo -e "${GREEN}正在编译...${NC}"
-cmake --build . --config Release -j$(nproc 2>/dev/null || sysctl -n hw.ncpu)
+cmake --build . --config Release --parallel
 
 echo ""
 echo -e "${GREEN}========================================${NC}"

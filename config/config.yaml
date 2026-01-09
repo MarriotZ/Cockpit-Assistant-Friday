@@ -91,7 +91,7 @@ voice:
     pitch: "+0Hz"
   
   # 唤醒词
-  wake_word: "小智"
+  wake_word: "Hey Friday"
   
   # VAD (语音活动检测)
   vad:

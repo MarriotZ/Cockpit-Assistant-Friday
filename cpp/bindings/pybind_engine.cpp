@@ -2,7 +2,7 @@
 #include <pybind11/stl.h>
 #include <pybind11/functional.h>
 #include <pybind11/gil.h>
-#include <Python.h>  // For PyGILState_Check
+#include <Python.h>
 
 #include "inference_engine.h"
 
@@ -179,11 +179,9 @@ PYBIND11_MODULE(cockpit_engine_py, m) {
         .def_property_readonly("context_usage", &cockpit::LLMEngine::get_context_usage)
         .def_property_readonly("max_context", &cockpit::LLMEngine::get_max_context);
     
-    // 便捷函数
     m.def("create_message", [](const std::string& role, const std::string& content) {
         return cockpit::Message(role, content);
     }, py::arg("role"), py::arg("content"), "Create a message");
     
-    // 版本信息
     m.attr("__version__") = "1.0.0";
 }
