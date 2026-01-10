@@ -12,13 +12,13 @@ Tokenizer::Tokenizer() = default;
 Tokenizer::~Tokenizer() = default;
 
 bool Tokenizer::load_from_model(const std::string& model_path) {
-    // 主要用于独立加载分词器
-    // 通常通过init_from_llama_model来初始化
-    return false;  // TODO: 实现独立加载
+    // 用于独立加载分词器
+    // 一般通过init_from_llama_model来初始化
+    return false;  // TODO: 独立加载
 }
 
 // ============================================================================
-// 辅助函数: 获取vocab指针
+// 获取vocab指针
 // ============================================================================
 static const llama_vocab* get_model_vocab(llama_model* model) {
     return llama_model_get_vocab(model);
@@ -42,7 +42,7 @@ void Tokenizer::init_from_llama_model(void* model) {
     special_tokens_.pad_token = llama_vocab_pad(vocab);
     
     // 找ChatML特殊tokens
-    // 这些token的ID因模型而异，需要通过文本查找
+    // token ID因模型而异，需通过文本查找
     for (int32_t i = 0; i < vocab_size_; i++) {
         std::string token_text = get_token_text(i);
         if (token_text == "<|im_start|>") {
