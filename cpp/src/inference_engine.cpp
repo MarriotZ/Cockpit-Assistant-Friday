@@ -89,7 +89,7 @@ struct LLMEngine::Impl {
     }
 };
 
-// 获取vocab指针的辅助函数
+// 获取vocab指针
 static const llama_vocab* get_vocab(llama_model* model) {
     return llama_model_get_vocab(model);
 }
@@ -100,7 +100,6 @@ static int get_vocab_size(llama_model* model) {
     return llama_vocab_n_tokens(vocab);
 }
 
-// 辅助函数: 向batch添加token
 static void batch_add(llama_batch& batch, llama_token token, llama_pos pos, 
                       const std::vector<llama_seq_id>& seq_ids, bool logits) {
     batch.token[batch.n_tokens] = token;
