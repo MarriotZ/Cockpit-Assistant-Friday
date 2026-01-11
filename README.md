@@ -1,6 +1,6 @@
 # Intelligent Cockpit Voice Assistant - FRIDAY / Cockpit Assistant - FRIDAY
 
-An intelligent automotive cockpit assistant based on Large Language Models, supporting voice interaction and vehicle control.
+Intelligent cockpit assistant based on Large Language Models, supporting voice interaction and vehicle simulation control.
 
 ## Features
 
