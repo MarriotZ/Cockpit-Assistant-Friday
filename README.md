@@ -1,126 +1,126 @@
-# 智能座舱语音助手 - FRIDAY / Cockpit Assistant - FRIDAY
+# Intelligent Cockpit Voice Assistant - FRIDAY / Cockpit Assistant - FRIDAY
 
-基于大语言模型的智能汽车座舱助手，支持语音交互和车辆控制。
+Intelligent cockpit assistant based on Large Language Models, supporting voice interaction and vehicle simulation control.
 
-## 功能特性
+## Features
 
-- 🎙️ **语音交互**: 集成Whisper ASR和Edge TTS
-- 🚗 **车辆控制**: 空调、车窗、导航、音乐等Function Calling
-- 💬 **多轮对话**: 支持上下文记忆的连续对话
-- ⚡ **流式输出**: 低延迟的流式文本生成
-- 🔧 **高性能推理**: C++推理引擎 + Python业务层
+- 🎙️ **Voice Interaction**: Integrated with Whisper ASR and Edge TTS
+- 🚗 **Vehicle Control**: Function Calling for AC, windows, navigation, music, etc.
+- 💬 **Multi-turn Dialogue**: Continuous conversation with context memory
+- ⚡ **Streaming Output**: Low-latency streaming text generation
+- 🔧 **High-Performance Inference**: C++ inference engine + Python business layer
 
-## 系统架构
+## System Architecture
 
 <img width="600" height="800" alt="architecture" src="./diagrams/architecture.png" />
 
-## 环境要求
+## Requirements
 
 - Ubuntu 20.04+ / macOS 12+
 - Python 3.10+
 - CMake 3.18+
-- CUDA 11.8+ (可选，GPU加速)
+- CUDA 11.8+ (optional, for GPU acceleration)
 - GCC 11+ / Clang 14+
 
-## 快速开始
+## Quick Start
 
-### 1. 克隆项目并安装依赖
+### 1. Clone the Project and Install Dependencies
 
 ```bash
-# 克隆项目
+# Clone the project
 git clone https://github.com/MarriotZ/Cockpit-Assistant-Friday
 cd cockpit-assistant-friday
 
-# 安装Python依赖
+# Install Python dependencies
 pip install -r requirements.txt
 
-# 下载并编译llama.cpp
+# Download and compile llama.cpp
 ./scripts/setup_llama_cpp.sh
 ```
 
-### 2. 下载模型
+### 2. Download Models
 
 ```bash
-# 推荐3B模型体验（功能满足，适配各类设备）
+# Recommended 3B model for best experience (full functionality, compatible with various devices)
 ./scripts/download_model.sh qwen2.5-3b
 ```
 
 <del>
-# 兼容多模型，可进一步使用QWen3-4B，但需开启（或关闭思考模式）过滤<think></think>标签
-Qwen2.5-7B-Instruct模型
+# Compatible with multiple models, can further use QWen3-4B, but need to enable (or disable thinking mode) to filter <think></think> tags
+Qwen2.5-7B-Instruct model
 ./scripts/download_model.sh qwen2.5-7b
 
-#或者使用较小的3B模型（适合低配设备）
+# Or use the smaller 3B model (suitable for low-end devices)
 ./scripts/download_model.sh qwen2.5-3b
 
 </del>
 
-### 3. 编译C++推理引擎
+### 3. Compile C++ Inference Engine
 
 ```bash
 mkdir build && cd build
-cmake .. -DGGML_CUDA=ON  # 使用GPU加速
-# cmake .. -DGGML_CUDA=OFF  # 仅CPU
+cmake .. -DGGML_CUDA=ON  # Use GPU acceleration
+# cmake .. -DGGML_CUDA=OFF  # CPU only
 make -j$(nproc)
 cd ..
 ```
 
-### 4. 运行演示
+### 4. Run Demos
 
 ```bash
-# 文本交互模式
+# Text interaction mode
 python python/demo_text.py
 
-# 语音交互模式
+# Voice interaction mode
 python python/demo_voice.py
 
-# Web界面模式
+# Web interface mode
 python python/demo_web.py
 ```
 
-## 项目结构
+## Project Structure
 
 ```
 cockpit-assistant/
-├── CMakeLists.txt              # CMake构建配置
-├── README.md                   # 项目说明
-├── requirements.txt            # Python依赖
-├── cpp/                        # C++代码
-│   ├── include/                # 头文件
-│   │   ├── inference_engine.h  # 推理引擎接口
-│   │   ├── kv_cache.h          # KV缓存管理
-│   │   ├── sampler.h           # 采样策略
-│   │   └── tokenizer.h         # 分词器
-│   ├── src/                    # 源文件
+├── CMakeLists.txt              # CMake build configuration
+├── README.md                   # Project documentation
+├── requirements.txt            # Python dependencies
+├── cpp/                        # C++ code
+│   ├── include/                # Header files
+│   │   ├── inference_engine.h  # Inference engine interface
+│   │   ├── kv_cache.h          # KV cache management
+│   │   ├── sampler.h           # Sampling strategy
+│   │   └── tokenizer.h         # Tokenizer
+│   ├── src/                    # Source files
 │   │   ├── inference_engine.cpp
 │   │   ├── kv_cache.cpp
 │   │   ├── sampler.cpp
 │   │   └── tokenizer.cpp
-│   └── bindings/               # Python绑定
+│   └── bindings/               # Python bindings
 │       └── pybind_engine.cpp
-├── python/                     # Python代码
+├── python/                     # Python code
 │   ├── __init__.py
-│   ├── cockpit_assistant.py    # 座舱助手主类
-│   ├── vehicle_controller.py   # 车辆控制器
-│   ├── function_registry.py    # 函数注册表
-│   ├── voice_interface.py      # 语音接口
-│   ├── demo_text.py            # 文本演示
-│   ├── demo_voice.py           # 语音演示
-│   └── demo_web.py             # Web演示
-├── models/                     # 模型存放目录
-├── config/                     # 配置文件
+│   ├── cockpit_assistant.py    # Main cockpit assistant class
+│   ├── vehicle_controller.py   # Vehicle controller
+│   ├── function_registry.py    # Function registry
+│   ├── voice_interface.py      # Voice interface
+│   ├── demo_text.py            # Text demo
+│   ├── demo_voice.py           # Voice demo
+│   └── demo_web.py             # Web demo
+├── models/                     # Model storage directory
+├── config/                     # Configuration files
 │   └── config.yaml
-├── tests/                      # 测试
+├── tests/                      # Tests
 │   ├── test_engine.cpp
 │   └── test_assistant.py
-└── scripts/                    # 脚本
+└── scripts/                    # Scripts
     ├── setup_llama_cpp.sh
     └── download_model.sh
 ```
 
-## 配置说明
+## Configuration
 
-编辑 `config/config.yaml` 自定义配置：
+Edit `config/config.yaml` to customize settings:
 
 ```yaml
 model:
@@ -135,100 +135,94 @@ inference:
   
 voice:
   asr_model: "small"
-  tts_voice: "zh-CN-XiaoxiaoNeural"
+  tts_voice: "en-US-AvaNeural"
   wake_word: "Hey Friday"
 ```
 
-## API使用示例
+## API Usage Examples
 
 ### Python API
 
 ```python
 from cockpit_assistant import CockpitAssistant
 
-# 初始化助手
+# Initialize assistant
 assistant = CockpitAssistant("models/qwen2.5-7b-instruct-q4_k_m.gguf")
 
-# 文本对话
-async for token in assistant.chat("把空调打开，温度调到26度"):
+# Text conversation
+async for token in assistant.chat("Turn on the AC and set temperature to 26 degrees"):
     print(token, end="", flush=True)
 ```
 
-### 带语音的使用
+### Usage with Voice
 
 ```python
 from voice_interface import CockpitVoiceAssistant
 
 assistant = CockpitVoiceAssistant("models/qwen2.5-7b-instruct-q4_k_m.gguf")
 
-# 处理语音输入
+# Process voice input
 async for audio_chunk in assistant.process_voice_input(audio_data):
     play_audio(audio_chunk)
 ```
 
 ## Function Calling
 
-系统支持以下车辆控制函数：
+The system supports the following vehicle control functions:
 
-| 函数名 | 描述 | 参数 |
-|--------|------|------|
-| `control_air_conditioner` | 控制空调 | action, temperature, fan_speed |
-| `control_window` | 控制车窗 | position, action |
-| `navigate_to` | 设置导航 | destination, via_points |
-| `play_music` | 播放音乐 | query, action |
-| `get_vehicle_status` | 查询车辆状态 | info_type |
-| `control_lights` | 控制车灯 | light_type, action |
-| `make_phone_call` | 拨打电话 | contact |
+| Function Name | Description | Parameters |
+|---------------|-------------|------------|
+| `control_air_conditioner` | Control AC | action, temperature, fan_speed |
+| `control_window` | Control windows | position, action |
+| `navigate_to` | Set navigation | destination, via_points |
+| `play_music` | Play music | query, action |
+| `get_vehicle_status` | Query vehicle status | info_type |
+| `control_lights` | Control lights | light_type, action |
+| `make_phone_call` | Make phone call | contact |
 
-## 性能指标
-待重测，代码进行了优化
+## Performance Metrics
+To be re-tested, code has been optimized
 
 <del>
 
-在 NVIDIA RTX 4090 上使用 Qwen2.5-7B-Instruct-Q4_K_M：
+On NVIDIA RTX 4090 with Qwen2.5-7B-Instruct-Q4_K_M:
 
-| 指标 | 数值 |
-|------|------|
-| 首Token延迟 | ~150ms |
-| 生成速度 | ~45 tokens/s |
-| 内存占用 | ~6GB |
-| ASR延迟 | ~200ms |
+| Metric | Value |
+|--------|-------|
+| First Token Latency | ~150ms |
+| Generation Speed | ~45 tokens/s |
+| Memory Usage | ~6GB |
+| ASR Latency | ~200ms |
 
 </del>
 
-## 扩展开发
+## Extension Development
 
-### 添加新的控制函数
+### Adding New Control Functions
 
-1. 在 `python/function_registry.py` 中定义函数schema
-2. 在 `python/vehicle_controller.py` 中实现处理逻辑
-3. 更新系统提示词
+1. Define function schema in `python/function_registry.py`
+2. Implement processing logic in `python/vehicle_controller.py`
+3. Update system prompt
 
-### 适配新硬件
+### Adapting to New Hardware
 
-修改 `CMakeLists.txt` 中的编译选项以适配不同硬件：
+Modify compilation options in `CMakeLists.txt` to adapt to different hardware:
 
 - NVIDIA Jetson: `-DGGML_CUDA=ON`
 - Apple Silicon: `-DGGML_METAL=ON`
-- 高通平台: 需要使用QNN后端
+- Qualcomm Platform: Requires QNN backend
 
-## 正在进行的工作
-### 手机端互联控制
+## Work in Progress
+### Mobile Device Remote Control
 
-**目前正在开发iOS和Android两端对该助手进行远程控制的方案**
+**Currently developing iOS and Android solutions for remote control of this assistant**
 
-## 许可证
+## License
 
 MIT License
 
-## 致谢
+## Acknowledgments
 - [llama.cpp](https://github.com/ggml-org/llama.cpp)
 - [Qwen](https://github.com/QwenLM/Qwen)
 - [faster-whisper](https://github.com/SYSTRAN/faster-whisper)
 - [edge-tts](https://github.com/rany2/edge-tts)
-
-
-
-
-
-

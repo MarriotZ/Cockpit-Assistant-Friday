@@ -9,7 +9,7 @@
 namespace cockpit {
 
 // ============================================================================
-// Sampler 实现
+// Sampler 
 // ============================================================================
 
 Sampler::Sampler(const SamplerConfig& config) : config_(config) {
@@ -245,7 +245,7 @@ std::vector<std::pair<int32_t, float>> Sampler::get_top_k_tokens(
 }
 
 // ============================================================================
-// GreedySampler 实现
+// GreedySampler 
 // ============================================================================
 
 int32_t GreedySampler::sample(float* logits, int vocab_size) {
@@ -253,7 +253,7 @@ int32_t GreedySampler::sample(float* logits, int vocab_size) {
 }
 
 // ============================================================================
-// MirostatSampler 实现
+// MirostatSampler 
 // ============================================================================
 
 MirostatSampler::MirostatSampler(float tau, float eta) 

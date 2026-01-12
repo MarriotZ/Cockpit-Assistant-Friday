@@ -90,6 +90,7 @@ struct LLMEngine::Impl {
 };
 
 // 获取vocab指针
+// 获取vocab指针
 static const llama_vocab* get_vocab(llama_model* model) {
     return llama_model_get_vocab(model);
 }
