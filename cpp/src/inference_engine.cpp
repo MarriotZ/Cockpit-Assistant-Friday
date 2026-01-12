@@ -89,7 +89,7 @@ struct LLMEngine::Impl {
     }
 };
 
-// 获取vocab指针的辅助函数
+// 获取vocab指针
 static const llama_vocab* get_vocab(llama_model* model) {
     return llama_model_get_vocab(model);
 }
@@ -100,7 +100,7 @@ static int get_vocab_size(llama_model* model) {
     return llama_vocab_n_tokens(vocab);
 }
 
-// 辅助函数: 向batch添加token
+// 向batch添加token
 static void batch_add(llama_batch& batch, llama_token token, llama_pos pos, 
                       const std::vector<llama_seq_id>& seq_ids, bool logits) {
     batch.token[batch.n_tokens] = token;
@@ -119,21 +119,12 @@ static void batch_add(llama_batch& batch, llama_token token, llama_pos pos,
 
 static void kv_cache_clear(llama_context* ctx) {
     llama_memory_clear(llama_get_memory(ctx), true);
-    
-    // 旧版 API
-    // llama_kv_cache_clear(ctx);
 }
 
 static void kv_cache_seq_rm(llama_context* ctx, llama_seq_id seq_id, llama_pos p0, llama_pos p1) {
     llama_memory_seq_rm(llama_get_memory(ctx), seq_id, p0, p1);
-    
-    // 旧版 API
-    // llama_kv_cache_seq_rm(ctx, seq_id, p0, p1);
 }
 
-// ============================================================================
-// 构造函数和析构函数
-// ============================================================================
 
 LLMEngine::LLMEngine(const EngineConfig& config) : pimpl_(std::make_unique<Impl>()) {
     pimpl_->config = config;
@@ -148,6 +139,7 @@ LLMEngine::LLMEngine(const std::string& model_path, int n_ctx, int n_gpu_layers)
     pimpl_->config.n_ctx = n_ctx;
     pimpl_->config.n_gpu_layers = n_gpu_layers;
     unsigned int hw_threads = std::thread::hardware_concurrency();
+    // 这里可以自己配
     pimpl_->config.n_threads = static_cast<int>((std::max)(1u, hw_threads / 2));
     
     if (!pimpl_->initialize()) {
@@ -165,7 +157,7 @@ LLMEngine::LLMEngine(LLMEngine&& other) noexcept
       function_schema_(std::move(other.function_schema_)) {
 }
 
-// 手动实现移动赋值运算符 (因为 std::atomic 不能被移动)
+// 手动实现移动赋值运算符
 LLMEngine& LLMEngine::operator=(LLMEngine&& other) noexcept {
     if (this != &other) {
         pimpl_ = std::move(other.pimpl_);
