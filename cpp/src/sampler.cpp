@@ -173,7 +173,7 @@ int32_t Sampler::sample(
     int vocab_size,
     const std::vector<int32_t>& last_tokens
 ) {
-    // 应用各种采样策略
+    // 应用不同采样策略
     apply_repetition_penalty(logits, vocab_size, last_tokens);
     apply_temperature(logits, vocab_size);
     apply_top_k(logits, vocab_size);
@@ -220,7 +220,7 @@ std::vector<std::pair<int32_t, float>> Sampler::get_top_k_tokens(
     
     // 部分排序找到top-k
     k = (std::min)(k, vocab_size);
-    std::partial_sort(logit_idx.begin(), 
+    std::partial_sort(logit_idx.begin(),
                       logit_idx.begin() + k,
                       logit_idx.end(),
                       [](const auto& a, const auto& b) { return a.first > b.first; });
@@ -314,13 +314,14 @@ int32_t MirostatSampler::sample(float* logits, int vocab_size) {
     std::discrete_distribution<int> dist(truncated_probs.begin(), truncated_probs.end());
     int sampled_idx = dist(rng_);
     int32_t sampled_token = sorted[sampled_idx].second;
-    
+
     // 更新mu
-    float surprise = -std::log2(probs[sampled_idx]);
+    const float eps = 1e-20f;
+    float surprise = -std::log2(truncated_probs[sampled_idx] + eps);
     float error = surprise - tau_;
     mu_ -= eta_ * error;
-    
+
     return sampled_token;
 }
 
-} // namespace cockpit
+} 
