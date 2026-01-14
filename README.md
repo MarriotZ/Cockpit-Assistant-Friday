@@ -226,3 +226,6 @@ MIT License
 - [Qwen](https://github.com/QwenLM/Qwen)
 - [faster-whisper](https://github.com/SYSTRAN/faster-whisper)
 - [edge-tts](https://github.com/rany2/edge-tts)
+
+## Code Assistant
+- Claude Code
