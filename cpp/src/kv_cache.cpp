@@ -82,7 +82,7 @@ bool KVCacheManager::deserialize(const std::vector<uint8_t>& data) {
     if (data.size() < sizeof(n_tokens) + n_tokens * sizeof(int32_t)) {
         return false;
     }
-    
+
     token_history_.resize(n_tokens);
     std::memcpy(token_history_.data(), 
                 data.data() + sizeof(n_tokens), 
@@ -94,18 +94,29 @@ bool KVCacheManager::deserialize(const std::vector<uint8_t>& data) {
 }
 
 size_t KVCacheManager::get_memory_usage() const {
-    // 估算内存使用量
-    // KV缓存: 2 * n_layer * n_ctx * n_head * head_dim * sizeof(float)
-    size_t kv_size = 2 * config_.n_layer * cached_tokens_ * 
-                     config_.n_head * config_.head_dim;
-    
-    if (config_.use_fp16) {
-        kv_size *= sizeof(uint16_t);
-    } else {
-        kv_size *= sizeof(float);
-    }
-    
-    return kv_size + token_history_.capacity() * sizeof(int32_t);
+    const size_t n_tokens_alloc = static_cast<size_t>(config_.n_ctx);
+    const size_t n_tokens_used  = static_cast<size_t>(
+        std::max(0, std::min(cached_tokens_, config_.n_ctx))
+    );
+
+    const size_t n_layer   = static_cast<size_t>(config_.n_layer);
+    const size_t head_dim  = static_cast<size_t>(config_.head_dim);
+
+    const size_t n_kv_head = static_cast<size_t>(
+        (config_.n_kv_head > 0) ? config_.n_kv_head : config_.n_head
+    );
+
+    // KV element size
+    const size_t elem_bytes = config_.use_fp16 ? sizeof(uint16_t) : sizeof(float);
+
+    // const size_t n_tokens = n_tokens_alloc;
+    const size_t n_tokens = n_tokens_used;
+
+    // KV bytes = K + V = 2 * layers * tokens * kv_heads * head_dim * bytes_per_elem
+    const size_t kv_bytes = 2ULL * n_layer * n_tokens * n_kv_head * head_dim * elem_bytes;
+
+    const size_t token_hist_bytes = token_history_.capacity() * sizeof(int32_t);
+    return kv_bytes + token_hist_bytes;
 }
 
 // ============================================================================

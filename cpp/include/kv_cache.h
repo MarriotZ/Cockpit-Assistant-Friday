@@ -20,6 +20,7 @@ public:
         int n_ctx;          // 最大上下文长度
         int n_layer;        // 模型层数
         int n_head;         // 注意力头数
+        int n_kv_head;
         int head_dim;       // 每个头的维度
         bool use_fp16;      // 是否使用FP16
     };

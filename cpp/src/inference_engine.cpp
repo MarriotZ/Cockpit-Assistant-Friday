@@ -280,6 +280,7 @@ std::string LLMEngine::generate_stream(
         
         bool should_stop = false;
         for (const auto& stop_seq : config.stop_sequences) {
+            // 这里需要优化，通过维护滑动窗口来处理后续可能越来越慢的问题
             if (result.find(stop_seq) != std::string::npos) {
                 // 移除停止序列
                 size_t pos = result.find(stop_seq);
