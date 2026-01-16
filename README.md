@@ -1,94 +1,231 @@
-> **Note:** This repository contains Anthropic's implementation of skills for Claude. For information about the Agent Skills standard, see [agentskills.io](http://agentskills.io).
+# Intelligent Cockpit Voice Assistant - FRIDAY / Cockpit Assistant - FRIDAY
 
-# Skills
-Skills are folders of instructions, scripts, and resources that Claude loads dynamically to improve performance on specialized tasks. Skills teach Claude how to complete specific tasks in a repeatable way, whether that's creating documents with your company's brand guidelines, analyzing data using your organization's specific workflows, or automating personal tasks.
+Intelligent cockpit assistant based on Large Language Models, supporting voice interaction and vehicle simulation control.
 
-For more information, check out:
-- [What are skills?](https://support.claude.com/en/articles/12512176-what-are-skills)
-- [Using skills in Claude](https://support.claude.com/en/articles/12512180-using-skills-in-claude)
-- [How to create custom skills](https://support.claude.com/en/articles/12512198-creating-custom-skills)
-- [Equipping agents for the real world with Agent Skills](https://anthropic.com/engineering/equipping-agents-for-the-real-world-with-agent-skills)
+## Features
 
-# About This Repository
+- 🎙️ **Voice Interaction**: Integrated with Whisper ASR and Edge TTS
+- 🚗 **Vehicle Control**: Function Calling for AC, windows, navigation, music, etc.
+- 💬 **Multi-turn Dialogue**: Continuous conversation with context memory
+- ⚡ **Streaming Output**: Low-latency streaming text generation
+- 🔧 **High-Performance Inference**: C++ inference engine + Python business layer
 
-This repository contains skills that demonstrate what's possible with Claude's skills system. These skills range from creative applications (art, music, design) to technical tasks (testing web apps, MCP server generation) to enterprise workflows (communications, branding, etc.).
+## System Architecture
 
-Each skill is self-contained in its own folder with a `SKILL.md` file containing the instructions and metadata that Claude uses. Browse through these skills to get inspiration for your own skills or to understand different patterns and approaches.
+<img width="600" height="800" alt="architecture" src="./diagrams/architecture.png" />
 
-Many skills in this repo are open source (Apache 2.0). We've also included the document creation & editing skills that power [Claude's document capabilities](https://www.anthropic.com/news/create-files) under the hood in the [`skills/docx`](./skills/docx), [`skills/pdf`](./skills/pdf), [`skills/pptx`](./skills/pptx), and [`skills/xlsx`](./skills/xlsx) subfolders. These are source-available, not open source, but we wanted to share these with developers as a reference for more complex skills that are actively used in a production AI application.
+## Requirements
 
-## Disclaimer
+- Ubuntu 20.04+ / macOS 12+
+- Python 3.10+
+- CMake 3.18+
+- CUDA 11.8+ (optional, for GPU acceleration)
+- GCC 11+ / Clang 14+
 
-**These skills are provided for demonstration and educational purposes only.** While some of these capabilities may be available in Claude, the implementations and behaviors you receive from Claude may differ from what is shown in these skills. These skills are meant to illustrate patterns and possibilities. Always test skills thoroughly in your own environment before relying on them for critical tasks.
+## Quick Start
 
-# Skill Sets
-- [./skills](./skills): Skill examples for Creative & Design, Development & Technical, Enterprise & Communication, and Document Skills
-- [./spec](./spec): The Agent Skills specification
-- [./template](./template): Skill template
+### 1. Clone the Project and Install Dependencies
 
-# Try in Claude Code, Claude.ai, and the API
+```bash
+# Clone the project
+git clone https://github.com/MarriotZ/Cockpit-Assistant-Friday
+cd cockpit-assistant-friday
 
-## Claude Code
-You can register this repository as a Claude Code Plugin marketplace by running the following command in Claude Code:
-```
-/plugin marketplace add anthropics/skills
-```
+# Install Python dependencies
+pip install -r requirements.txt
 
-Then, to install a specific set of skills:
-1. Select `Browse and install plugins`
-2. Select `anthropic-agent-skills`
-3. Select `document-skills` or `example-skills`
-4. Select `Install now`
-
-Alternatively, directly install either Plugin via:
-```
-/plugin install document-skills@anthropic-agent-skills
-/plugin install example-skills@anthropic-agent-skills
+# Download and compile llama.cpp
+./scripts/setup_llama_cpp.sh
 ```
 
-After installing the plugin, you can use the skill by just mentioning it. For instance, if you install the `document-skills` plugin from the marketplace, you can ask Claude Code to do something like: "Use the PDF skill to extract the form fields from `path/to/some-file.pdf`"
+### 2. Download Models
 
-## Claude.ai
-
-These example skills are all already available to paid plans in Claude.ai. 
-
-To use any skill from this repository or upload custom skills, follow the instructions in [Using skills in Claude](https://support.claude.com/en/articles/12512180-using-skills-in-claude#h_a4222fa77b).
-
-## Claude API
-
-You can use Anthropic's pre-built skills, and upload custom skills, via the Claude API. See the [Skills API Quickstart](https://docs.claude.com/en/api/skills-guide#creating-a-skill) for more.
-
-# Creating a Basic Skill
-
-Skills are simple to create - just a folder with a `SKILL.md` file containing YAML frontmatter and instructions. You can use the **template-skill** in this repository as a starting point:
-
-```markdown
----
-name: my-skill-name
-description: A clear description of what this skill does and when to use it
----
-
-# My Skill Name
-
-[Add your instructions here that Claude will follow when this skill is active]
-
-## Examples
-- Example usage 1
-- Example usage 2
-
-## Guidelines
-- Guideline 1
-- Guideline 2
+```bash
+# Recommended 3B model for best experience (full functionality, compatible with various devices)
+./scripts/download_model.sh qwen2.5-3b
 ```
 
-The frontmatter requires only two fields:
-- `name` - A unique identifier for your skill (lowercase, hyphens for spaces)
-- `description` - A complete description of what the skill does and when to use it
+<del>
+# Compatible with multiple models, can further use QWen3-4B, but need to enable (or disable thinking mode) to filter <think></think> tags
+Qwen2.5-7B-Instruct model
+./scripts/download_model.sh qwen2.5-7b
 
-The markdown content below contains the instructions, examples, and guidelines that Claude will follow. For more details, see [How to create custom skills](https://support.claude.com/en/articles/12512198-creating-custom-skills).
+# Or use the smaller 3B model (suitable for low-end devices)
+./scripts/download_model.sh qwen2.5-3b
 
-# Partner Skills
+</del>
 
-Skills are a great way to teach Claude how to get better at using specific pieces of software. As we see awesome example skills from partners, we may highlight some of them here:
+### 3. Compile C++ Inference Engine
 
-- **Notion** - [Notion Skills for Claude](https://www.notion.so/notiondevs/Notion-Skills-for-Claude-28da4445d27180c7af1df7d8615723d0)
+```bash
+mkdir build && cd build
+cmake .. -DGGML_CUDA=ON  # Use GPU acceleration
+# cmake .. -DGGML_CUDA=OFF  # CPU only
+make -j$(nproc)
+cd ..
+```
+
+### 4. Run Demos
+
+```bash
+# Text interaction mode
+python python/demo_text.py
+
+# Voice interaction mode
+python python/demo_voice.py
+
+# Web interface mode
+python python/demo_web.py
+```
+
+## Project Structure
+
+```
+cockpit-assistant/
+├── CMakeLists.txt              # CMake build configuration
+├── README.md                   # Project documentation
+├── requirements.txt            # Python dependencies
+├── cpp/                        # C++ code
+│   ├── include/                # Header files
+│   │   ├── inference_engine.h  # Inference engine interface
+│   │   ├── kv_cache.h          # KV cache management
+│   │   ├── sampler.h           # Sampling strategy
+│   │   └── tokenizer.h         # Tokenizer
+│   ├── src/                    # Source files
+│   │   ├── inference_engine.cpp
+│   │   ├── kv_cache.cpp
+│   │   ├── sampler.cpp
+│   │   └── tokenizer.cpp
+│   └── bindings/               # Python bindings
+│       └── pybind_engine.cpp
+├── python/                     # Python code
+│   ├── __init__.py
+│   ├── cockpit_assistant.py    # Main cockpit assistant class
+│   ├── vehicle_controller.py   # Vehicle controller
+│   ├── function_registry.py    # Function registry
+│   ├── voice_interface.py      # Voice interface
+│   ├── demo_text.py            # Text demo
+│   ├── demo_voice.py           # Voice demo
+│   └── demo_web.py             # Web demo
+├── models/                     # Model storage directory
+├── config/                     # Configuration files
+│   └── config.yaml
+├── tests/                      # Tests
+│   ├── test_engine.cpp
+│   └── test_assistant.py
+└── scripts/                    # Scripts
+    ├── setup_llama_cpp.sh
+    └── download_model.sh
+```
+
+## Configuration
+
+Edit `config/config.yaml` to customize settings:
+
+```yaml
+model:
+  path: "models/qwen2.5-7b-instruct-q4_k_m.gguf"
+  n_ctx: 4096
+  n_gpu_layers: 35
+
+inference:
+  temperature: 0.7
+  max_tokens: 512
+  top_p: 0.9
+
+voice:
+  asr_model: "small"
+  tts_voice: "en-US-AvaNeural"
+  wake_word: "Hey Friday"
+```
+
+## API Usage Examples
+
+### Python API
+
+```python
+from cockpit_assistant import CockpitAssistant
+
+# Initialize assistant
+assistant = CockpitAssistant("models/qwen2.5-7b-instruct-q4_k_m.gguf")
+
+# Text conversation
+async for token in assistant.chat("Turn on the AC and set temperature to 26 degrees"):
+    print(token, end="", flush=True)
+```
+
+### Usage with Voice
+
+```python
+from voice_interface import CockpitVoiceAssistant
+
+assistant = CockpitVoiceAssistant("models/qwen2.5-7b-instruct-q4_k_m.gguf")
+
+# Process voice input
+async for audio_chunk in assistant.process_voice_input(audio_data):
+    play_audio(audio_chunk)
+```
+
+## Function Calling
+
+The system supports the following vehicle control functions:
+
+| Function Name | Description | Parameters |
+|---------------|-------------|------------|
+| `control_air_conditioner` | Control AC | action, temperature, fan_speed |
+| `control_window` | Control windows | position, action |
+| `navigate_to` | Set navigation | destination, via_points |
+| `play_music` | Play music | query, action |
+| `get_vehicle_status` | Query vehicle status | info_type |
+| `control_lights` | Control lights | light_type, action |
+| `make_phone_call` | Make phone call | contact |
+
+## Performance Metrics
+To be re-tested, code has been optimized
+
+<del>
+
+Qwen2.5-7B-Instruct-Q4_K_M:
+
+| Metric | Value |
+|--------|-------|
+| First Token Latency | ~150ms |
+| Generation Speed | ~45 tokens/s |
+| Memory Usage | ~6GB |
+| ASR Latency | ~200ms |
+
+</del>
+
+## Extension Development
+
+### Adding New Control Functions
+
+1. Define function schema in `python/function_registry.py`
+2. Implement processing logic in `python/vehicle_controller.py`
+3. Update system prompt
+
+### Adapting to New Hardware
+
+Modify compilation options in `CMakeLists.txt` to adapt to different hardware:
+
+- NVIDIA Jetson: `-DGGML_CUDA=ON`
+- Apple Silicon: `-DGGML_METAL=ON`
+- Qualcomm Platform: Requires QNN backend
+
+## Work in Progress
+### Mobile Device Remote Control
+
+**Currently developing iOS and Android solutions for remote control of this assistant**
+
+## License
+
+MIT License
+
+## Acknowledgments
+- [llama.cpp](https://github.com/ggml-org/llama.cpp)
+- [Qwen](https://github.com/QwenLM/Qwen)
+- [faster-whisper](https://github.com/SYSTRAN/faster-whisper)
+- [edge-tts](https://github.com/rany2/edge-tts)
+
+## Code Assistant
+- Claude Code
