@@ -185,7 +185,7 @@ To be re-tested, code has been optimized
 
 <del>
 
-On NVIDIA RTX 4090 with Qwen2.5-7B-Instruct-Q4_K_M:
+Qwen2.5-7B-Instruct-Q4_K_M:
 
 | Metric | Value |
 |--------|-------|
