@@ -127,12 +127,12 @@ model:
   path: "models/qwen2.5-7b-instruct-q4_k_m.gguf"
   n_ctx: 4096
   n_gpu_layers: 35
-  
+
 inference:
   temperature: 0.7
   max_tokens: 512
   top_p: 0.9
-  
+
 voice:
   asr_model: "small"
   tts_voice: "en-US-AvaNeural"
@@ -229,3 +229,6 @@ MIT License
 
 ## Code Assistant
 - Claude Code
+
+## Skills Reference
+- [Skills](https://github.com/anthropics/skills)
