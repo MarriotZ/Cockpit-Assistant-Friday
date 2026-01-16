@@ -44,7 +44,7 @@ except ImportError:
 
 @dataclass
 class AudioConfig:
-    """Audio configuration"""
+    """音频配置"""
     sample_rate: int = 16000
     channels: int = 1
     chunk_size: int = 480  # 30ms at 16kHz
@@ -53,7 +53,7 @@ class AudioConfig:
 
 @dataclass
 class ASRConfig:
-    """ASR configuration"""
+    """ASR配置"""
     model_size: str = "small"  # tiny, base, small, medium, large
     device: str = "cuda"       # cuda, cpu
     compute_type: str = "float16"  # float16, int8
@@ -63,19 +63,19 @@ class ASRConfig:
 
 @dataclass
 class TTSConfig:
-    """TTS configuration"""
+    """TTS配置"""
     voice: str = "zh-CN-XiaoxiaoNeural"
-    rate: str = "+0%"
-    volume: str = "+0%"
-    pitch: str = "+0Hz"
+    rate: str = "+0%"      # 语速
+    volume: str = "+0%"    # 音量
+    pitch: str = "+0Hz"    # 音调
 
 
 # =============================================================================
-# ASR
+# ASR - 语音识别
 # =============================================================================
 
 class ASREngine:
-    """Speech recognition engine"""
+    """语音识别引擎"""
     
     def __init__(self, config: ASRConfig = None):
         self.config = config or ASRConfig()
@@ -84,11 +84,11 @@ class ASREngine:
     
     def initialize(self, max_retries=3, retry_delay=2):
         """
-        Initialize ASR model
+        初始化ASR模型
     
         Args:
-            max_retries: Maximum retry attempts
-            retry_delay: Retry delay in seconds
+            max_retries: 最大重试次数
+            retry_delay: 重试延迟（秒）
         """
         if self._initialized:
             return
@@ -127,7 +127,7 @@ class ASREngine:
                         compute_type=compute_type
                     )
                     logger.info(f"Whisper model loaded on {device} with compute_type={compute_type}")
-                    break
+                    break  
                 except (RuntimeError, ValueError) as e:
                     error_str = str(e).lower()
                     if "cuda" in error_str or "cublas" in error_str:
@@ -141,7 +141,7 @@ class ASREngine:
                                 compute_type="int8"
                             )
                             logger.info("Whisper model loaded on CPU")
-                            break
+                            break  
                         except Exception as fallback_error:
                             last_error = fallback_error
                             if attempt < max_retries - 1:
@@ -158,7 +158,7 @@ class ASREngine:
                                 compute_type="int8"
                             )
                             logger.info(f"Whisper model loaded on {device} with int8 (fallback)")
-                            break
+                            break  
                         except Exception as fallback_error:
                             last_error = fallback_error
                             if attempt < max_retries - 1:
@@ -186,37 +186,39 @@ class ASREngine:
                             continue
                         else:
                             logger.error(f"Failed to load Whisper model after {max_retries} attempts: {e}")
-                            raise Exception(f"Failed to load ASR model (network error, retried {max_retries} times): {str(e)}")
+                            raise Exception(f"无法加载ASR模型（网络错误，已重试{max_retries}次）: {str(e)}")
                     else:
                         raise
             
             if self._model is None:
                 if last_error:
-                    raise Exception(f"Failed to load ASR model: {str(last_error)}")
+                    raise Exception(f"无法加载ASR模型: {str(last_error)}")
                 else:
-                    raise Exception("Failed to load ASR model: unknown error")
+                    raise Exception("无法加载ASR模型：未知错误")
         else:
             logger.warning("Using mock ASR")
         
         self._initialized = True
     
-    async def transcribe(self, audio_data: np.ndarray, sample_rate: int = 16000) -> str:
+    async def transcribe(
+        self, 
+        audio_data: np.ndarray, 
+        sample_rate: int = 16000
+    ) -> str:
         """
-        Transcribe audio
+        转录音频
         
         Args:
-            audio_data: Audio data (numpy array)
-            sample_rate: Sample rate
+            audio_data: 音频数据 (numpy array)
+            sample_rate: 采样率
             
         Returns:
-            Recognized text
+            识别的文本
         """
         if not self._initialized:
             self.initialize()
         
-        if self._model is None:
-            return "Mock speech recognition result"
-        
+        # 在线程池中运行转录
         loop = asyncio.get_event_loop()
         result = await loop.run_in_executor(
             None,
@@ -227,7 +229,8 @@ class ASREngine:
         return result
     
     def _transcribe_sync(self, audio_data: np.ndarray, sample_rate: int) -> str:
-        """Synchronous transcription"""
+        """同步转录"""
+        # 确保音频格式正确
         if audio_data.dtype != np.float32:
             audio_data = audio_data.astype(np.float32)
             if audio_data.max() > 1.0:
@@ -244,12 +247,12 @@ class ASREngine:
         return text.strip()
     
     def transcribe_file(self, file_path: str) -> str:
-        """Transcribe audio file"""
+        """转录音频文件"""
         if not self._initialized:
             self.initialize()
         
         if self._model is None:
-            return "Mock speech recognition result"
+            return "模拟语音识别结果"
         
         segments, info = self._model.transcribe(
             file_path,
@@ -261,19 +264,20 @@ class ASREngine:
 
 
 # =============================================================================
-# TTS - Text to Speech
+# TTS - 语音合成
 # =============================================================================
 
 class TTSEngine:
-    """Text to speech engine"""
+    """语音合成引擎"""
     
+    # 可用的中文语音
     CHINESE_VOICES = {
         "xiaoxiao": "zh-CN-XiaoxiaoNeural",
         "xiaoyi": "zh-CN-XiaoyiNeural",
-        "yunjian": "zh-CN-YunjianNeural",
-        "yunxi": "zh-CN-YunxiNeural",
-        "yunxia": "zh-CN-YunxiaNeural",      # Male
-        "yunyang": "zh-CN-YunyangNeural",    # Male, news broadcast style
+        "yunjian": "zh-CN-YunjianNeural",       
+        "yunxi": "zh-CN-YunxiNeural",            
+        "yunxia": "zh-CN-YunxiaNeural",          # 男声
+        "yunyang": "zh-CN-YunyangNeural",        # 男声，新闻播报
     }
     
     def __init__(self, config: TTSConfig = None):
@@ -281,15 +285,16 @@ class TTSEngine:
     
     async def synthesize(self, text: str) -> bytes:
         """
-        Synthesize speech
+        合成语音
         
         Args:
-            text: Text to synthesize
+            text: 要合成的文本
             
         Returns:
-            MP3 format audio data
+            MP3格式的音频数据
         """
         if not HAS_EDGE_TTS:
+            # 返回空的音频数据
             return b""
         
         communicate = edge_tts.Communicate(
@@ -309,13 +314,13 @@ class TTSEngine:
     
     async def synthesize_stream(self, text: str) -> AsyncIterator[bytes]:
         """
-        Stream synthesize speech
+        流式合成语音
         
         Args:
-            text: Text to synthesize
+            text: 要合成的文本
             
         Yields:
-            Audio data chunks
+            音频数据块
         """
         if not HAS_EDGE_TTS:
             yield b""
@@ -334,33 +339,33 @@ class TTSEngine:
                 yield chunk["data"]
     
     def set_voice(self, voice_name: str):
-        """Set voice"""
+        """设置语音"""
         if voice_name in self.CHINESE_VOICES:
             self.config.voice = self.CHINESE_VOICES[voice_name]
         else:
             self.config.voice = voice_name
     
     def set_rate(self, rate: int):
-        """Set speech rate (-100 to +100)"""
+        """设置语速 (-100 到 +100)"""
         self.config.rate = f"{rate:+d}%"
     
     def set_volume(self, volume: int):
-        """Set volume (-100 to +100)"""
+        """设置音量 (-100 到 +100)"""
         self.config.volume = f"{volume:+d}%"
 
 
 # =============================================================================
-# VAD - Voice Activity Detection
+# VAD - 语音活动检测
 # =============================================================================
 
 class VADEngine:
-    """Voice activity detection"""
+    """语音活动检测"""
     
     def __init__(self, aggressiveness: int = 2, sample_rate: int = 16000):
         """
         Args:
-            aggressiveness: Aggressiveness level (0-3), higher = more aggressive filtering
-            sample_rate: Sample rate (8000, 16000, 32000, 48000)
+            aggressiveness: 激进程度 (0-3)，越高越激进地过滤非语音
+            sample_rate: 采样率 (8000, 16000, 32000, 48000)
         """
         self.sample_rate = sample_rate
         self.aggressiveness = aggressiveness
@@ -371,16 +376,16 @@ class VADEngine:
     
     def is_speech(self, audio_chunk: bytes) -> bool:
         """
-        Detect if audio chunk contains speech
+        检测音频块是否包含语音
         
         Args:
-            audio_chunk: Audio data (10, 20, or 30ms PCM data)
+            audio_chunk: 音频数据 (10, 20, 或 30ms的PCM数据)
             
         Returns:
-            Whether speech is detected
+            是否包含语音
         """
         if self._vad is None:
-            return True
+            return True  # 如果没有VAD，假设所有音频都是语音
         
         try:
             return self._vad.is_speech(audio_chunk, self.sample_rate)
@@ -389,11 +394,11 @@ class VADEngine:
 
 
 # =============================================================================
-# Audio Input/Output
+# 音频输入/输出
 # =============================================================================
 
 class AudioRecorder:
-    """Audio recorder"""
+    """音频录制器"""
     
     def __init__(self, config: AudioConfig = None):
         self.config = config or AudioConfig()
@@ -408,15 +413,15 @@ class AudioRecorder:
         on_audio: Callable[[np.ndarray], None] = None
     ) -> np.ndarray:
         """
-        Record audio
+        录制音频
         
         Args:
-            duration: Recording duration in seconds, None for VAD auto-detection
-            vad_timeout: VAD timeout (stop after this duration of silence)
-            on_audio: Real-time audio callback
+            duration: 录制时长（秒），None表示使用VAD自动检测
+            vad_timeout: VAD超时时间（连续无语音多久后停止）
+            on_audio: 实时音频回调
             
         Returns:
-            Recorded audio data
+            录制的音频数据
         """
         if not HAS_SOUNDDEVICE:
             logger.warning("sounddevice not available, returning mock audio")
@@ -469,12 +474,12 @@ class AudioRecorder:
         return np.array([], dtype=np.int16)
     
     def stop(self):
-        """Stop recording"""
+        """停止录制"""
         self._recording = False
 
 
 class AudioPlayer:
-    """Audio player"""
+    """音频播放器"""
     
     def __init__(self, config: AudioConfig = None):
         self.config = config or AudioConfig()
@@ -482,11 +487,11 @@ class AudioPlayer:
     
     async def play(self, audio_data: np.ndarray, sample_rate: int = None):
         """
-        Play audio
+        播放音频
         
         Args:
-            audio_data: Audio data
-            sample_rate: Sample rate
+            audio_data: 音频数据
+            sample_rate: 采样率
         """
         if not HAS_SOUNDDEVICE:
             logger.warning("sounddevice not available")
@@ -496,22 +501,28 @@ class AudioPlayer:
         self._playing = True
         
         loop = asyncio.get_event_loop()
-        await loop.run_in_executor(None, sd.play, audio_data, sample_rate)
+        await loop.run_in_executor(
+            None,
+            sd.play,
+            audio_data,
+            sample_rate
+        )
         await loop.run_in_executor(None, sd.wait)
         
         self._playing = False
     
     async def play_bytes(self, audio_bytes: bytes, format: str = "mp3"):
         """
-        Play audio bytes
+        播放音频字节
         
         Args:
-            audio_bytes: Audio data
-            format: Format (mp3, wav)
+            audio_bytes: 音频数据
+            format: 格式 (mp3, wav)
         """
         if not audio_bytes:
             return
         
+        # 需要安装pydub来解码mp3
         try:
             from pydub import AudioSegment
             
@@ -527,18 +538,18 @@ class AudioPlayer:
             logger.warning("pydub not installed, cannot play audio")
     
     def stop(self):
-        """Stop playback"""
+        """停止播放"""
         if HAS_SOUNDDEVICE:
             sd.stop()
         self._playing = False
 
 
 # =============================================================================
-# Integrated Voice Interface
+# 集成语音接口
 # =============================================================================
 
 class VoiceInterface:
-    """Integrated voice interface"""
+    """集成语音接口"""
     
     def __init__(
         self,
@@ -555,23 +566,27 @@ class VoiceInterface:
         self._is_listening = False
     
     def set_wake_word(self, wake_word: str):
-        """Set wake word"""
+        """设置唤醒词"""
         self._wake_word = wake_word
     
     async def listen(self, duration: float = None) -> str:
         """
-        Listen and recognize speech
+        监听并识别语音
         
         Args:
-            duration: Recording duration, None for VAD
+            duration: 录制时长，None使用VAD
             
         Returns:
-            Recognized text
+            识别的文本
         """
         self._is_listening = True
+        
+        # 录制音频
         audio_data = await self.recorder.record(duration=duration)
+        
         self._is_listening = False
         
+        # 识别
         if len(audio_data) > 0:
             text = await self.asr.transcribe(audio_data)
             return text
@@ -580,22 +595,22 @@ class VoiceInterface:
     
     async def speak(self, text: str):
         """
-        Speak text
+        语音播报
         
         Args:
-            text: Text to speak
+            text: 要播报的文本
         """
         audio_bytes = await self.tts.synthesize(text)
         if audio_bytes:
             await self.player.play_bytes(audio_bytes, format="mp3")
     
     async def speak_stream(self, text: str):
-        """Stream speak text"""
+        """流式语音播报"""
         async for audio_chunk in self.tts.synthesize_stream(text):
             await self.player.play_bytes(audio_chunk, format="mp3")
     
     def stop(self):
-        """Stop current operation"""
+        """停止当前操作"""
         self.recorder.stop()
         self.player.stop()
         self._is_listening = False
@@ -606,11 +621,11 @@ class VoiceInterface:
 
 
 # =============================================================================
-# Cockpit Voice Assistant
+# 带语音的座舱助手
 # =============================================================================
 
 class CockpitVoiceAssistant:
-    """Cockpit assistant with voice interaction"""
+    """带语音交互的座舱助手"""
     
     def __init__(
         self,
@@ -627,11 +642,12 @@ class CockpitVoiceAssistant:
     
     async def process_voice(self) -> str:
         """
-        Process one voice interaction
+        处理一次语音交互
         
         Returns:
-            Assistant's text response
+            助手的文本响应
         """
+        # 1. 监听用户语音
         logger.info("Listening...")
         user_text = await self.voice.listen()
         
@@ -640,12 +656,14 @@ class CockpitVoiceAssistant:
         
         logger.info(f"User: {user_text}")
         
+        # 2. 获取LLM响应
         response_text = ""
         async for token in self.assistant.chat(user_text):
             response_text += token
         
         logger.info(f"Assistant: {response_text}")
         
+        # 3. 语音播报
         clean_response = self._clean_response_for_tts(response_text)
         if clean_response:
             await self.voice.speak(clean_response)
@@ -653,14 +671,16 @@ class CockpitVoiceAssistant:
         return response_text
     
     def _clean_response_for_tts(self, response: str) -> str:
-        """Clean response text for TTS (remove JSON)"""
+        """清理响应文本用于TTS"""
         import re
+        # 移除JSON
         cleaned = re.sub(r'\{[^}]+\}', '', response)
+        # 移除多余空白
         cleaned = ' '.join(cleaned.split())
         return cleaned.strip()
     
     async def run_loop(self):
-        """Run interaction loop"""
+        """运行交互循环"""
         self._running = True
         logger.info("Voice assistant started. Say wake word to begin.")
         
@@ -676,17 +696,24 @@ class CockpitVoiceAssistant:
         logger.info("Voice assistant stopped.")
     
     def stop(self):
-        """Stop assistant"""
+        """停止"""
         self._running = False
         self.voice.stop()
 
+
+# =============================================================================
+# 测试
+# =============================================================================
+
 async def _test():
-    """Test voice interface"""
+    """测试语音接口"""
+    # 测试TTS
     tts = TTSEngine()
     print("Testing TTS...")
-    audio = await tts.synthesize("Hello, I am the intelligent cockpit assistant Friday")
+    audio = await tts.synthesize("你好，我是智能座舱助手Friday")
     print(f"Generated {len(audio)} bytes of audio")
     
+    # 如果有音频设备，播放
     if HAS_SOUNDDEVICE and audio:
         player = AudioPlayer()
         await player.play_bytes(audio)

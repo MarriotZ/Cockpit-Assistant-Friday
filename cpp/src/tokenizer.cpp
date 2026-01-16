@@ -62,7 +62,7 @@ ChatTemplateType Tokenizer::detect_template_type() {
         return ChatTemplateType::CHATML;
     }
     
-    // 检查是否有Llama风格的tokens
+    // 检查Llama风格的tokens
     int32_t check_limit = (std::min)(vocab_size_, (int32_t)10000);
     for (int32_t i = 0; i < check_limit; i++) {
         std::string token_text = get_token_text(i);
@@ -206,7 +206,7 @@ std::string Tokenizer::apply_chat_template(
         case ChatTemplateType::LLAMA3:
             return apply_llama3_template(messages, add_generation_prompt);
         case ChatTemplateType::CUSTOM:
-            // TODO: 实现自定义模板解析
+            // TODO: 自定义模板解析
             return apply_chatml_template(messages, add_generation_prompt);
         default:
             return apply_chatml_template(messages, add_generation_prompt);

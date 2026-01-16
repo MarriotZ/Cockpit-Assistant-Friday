@@ -1,12 +1,12 @@
 #!/usr/bin/env python3
 """
-Demo Web - Web界面演示 (语音增强版) - 音频处理修复版
+Demo Web - Web Interface Demo (Voice Enhanced Version) - Audio Processing Fixed
 
-修复内容：
-1. 前端使用 MediaRecorder 替代 ScriptProcessorNode（不会丢帧）
-2. 前端使用 OfflineAudioContext 进行高质量重采样（自动抗混叠滤波）
-3. 后端使用 scipy.signal.resample_poly 进行验证重采样
-4. 修复首次录音 WebM header 不完整的问题（添加最小录音时间保护）
+Fixes:
+1. Frontend uses MediaRecorder instead of ScriptProcessorNode (no frame drops)
+2. Frontend uses OfflineAudioContext for high-quality resampling (automatic anti-aliasing filter)
+3. Backend uses scipy.signal.resample_poly for validation resampling
+4. Fixed first recording WebM header incomplete issue (added minimum recording time protection)
 """
 
 import asyncio
@@ -24,7 +24,7 @@ from typing import Optional
 import logging
 import numpy as np
 
-# 添加项目路径
+# Add project path
 sys.path.insert(0, str(Path(__file__).parent))
 
 try:
@@ -35,26 +35,26 @@ try:
     HAS_FASTAPI = True
 except ImportError:
     HAS_FASTAPI = False
-    print("请安装FastAPI: pip install fastapi uvicorn")
+    print("Please install FastAPI: pip install fastapi uvicorn")
 
 from cockpit_assistant import CockpitAssistant
 
-# 尝试导入语音相关库
+# Try importing voice-related libraries
 try:
     from faster_whisper import WhisperModel
     HAS_WHISPER = True
 except ImportError:
     HAS_WHISPER = False
-    print("提示: 安装 faster-whisper 可启用语音识别: pip install faster-whisper")
+    print("Note: Install faster-whisper to enable speech recognition: pip install faster-whisper")
 
 try:
     import edge_tts
     HAS_EDGE_TTS = True
 except ImportError:
     HAS_EDGE_TTS = False
-    print("提示: 安装 edge-tts 可启用语音合成: pip install edge-tts")
+    print("Note: Install edge-tts to enable speech synthesis: pip install edge-tts")
 
-# 尝试导入 scipy 用于高质量重采样
+# Try importing scipy for high-quality resampling
 try:
     from scipy import signal
     HAS_SCIPY = True
@@ -66,21 +66,22 @@ logger = logging.getLogger(__name__)
 
 HTML_TEMPLATE = """
 <!DOCTYPE html>
-<html lang="zh-CN">
+<html lang="en">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Friday · 语音智能助手</title>
+    <title>Friday · Intelligent Cockpit System</title>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Space+Grotesk:wght@500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
     <style>
         :root {
-            /* 现代浅色配色 - 清爽简洁 */
+            /* Modern light color scheme - Clean and simple */
             --bg-base: #f8fafc;
             --bg-warm: #f1f5f9;
             --bg-card: #ffffff;
             --bg-elevated: #ffffff;
+            --bg-glass: rgba(255, 255, 255, 0.85);
             
             --accent: #3b82f6;
             --accent-light: #60a5fa;
@@ -90,6 +91,7 @@ HTML_TEMPLATE = """
             
             --gradient-brand: linear-gradient(135deg, #3b82f6 0%, #6366f1 100%);
             --gradient-soft: linear-gradient(135deg, rgba(59, 130, 246, 0.06) 0%, rgba(99, 102, 241, 0.06) 100%);
+            --gradient-cockpit: linear-gradient(180deg, #f8fafc 0%, #e2e8f0 100%);
             
             --text-primary: #1e293b;
             --text-secondary: #475569;
@@ -108,6 +110,7 @@ HTML_TEMPLATE = """
             --shadow-md: 0 4px 6px -1px rgba(0, 0, 0, 0.05), 0 2px 4px -1px rgba(0, 0, 0, 0.04);
             --shadow-lg: 0 20px 25px -5px rgba(0, 0, 0, 0.05), 0 10px 10px -5px rgba(0, 0, 0, 0.02);
             --shadow-glow: 0 0 40px rgba(59, 130, 246, 0.08);
+            --shadow-cockpit: 0 8px 32px rgba(0, 0, 0, 0.08);
             
             --radius-sm: 12px;
             --radius-md: 16px;
@@ -116,60 +119,66 @@ HTML_TEMPLATE = """
         }
 
         * { margin: 0; padding: 0; box-sizing: border-box; }
-        html { font-size: 15px; }
+        html { font-size: 14px; }
 
         body {
             font-family: 'Inter', -apple-system, sans-serif;
-            background: var(--bg-base);
+            background: var(--gradient-cockpit);
             color: var(--text-primary);
             min-height: 100vh;
             line-height: 1.6;
+            overflow: hidden;
         }
 
+        /* Cockpit background texture */
         body::before {
             content: '';
             position: fixed;
             inset: 0;
             background: 
-                radial-gradient(ellipse 80% 50% at 10% -20%, rgba(59, 130, 246, 0.05), transparent 50%),
-                radial-gradient(ellipse 60% 40% at 90% 100%, rgba(99, 102, 241, 0.04), transparent 50%),
-                radial-gradient(ellipse 40% 30% at 50% 50%, rgba(59, 130, 246, 0.02), transparent 50%);
+                radial-gradient(ellipse 100% 60% at 50% -10%, rgba(59, 130, 246, 0.06), transparent 50%),
+                radial-gradient(ellipse 80% 40% at 20% 90%, rgba(99, 102, 241, 0.04), transparent 50%),
+                radial-gradient(ellipse 80% 40% at 80% 90%, rgba(59, 130, 246, 0.04), transparent 50%);
             pointer-events: none;
         }
 
-        .app {
+        /* ===== Cockpit main layout ===== */
+        .cockpit {
             position: relative;
             z-index: 1;
             display: grid;
-            grid-template-rows: auto 1fr;
-            min-height: 100vh;
-            max-width: 1400px;
+            grid-template-rows: auto 1fr auto;
+            height: 100vh;
+            max-width: 1600px;
             margin: 0 auto;
-            padding: 0 32px;
+            padding: 16px 24px;
+            gap: 16px;
         }
 
-        /* ===== 顶部导航 ===== */
-        .topbar {
+        /* ===== Top HUD area ===== */
+        .hud-bar {
             display: flex;
             align-items: center;
             justify-content: space-between;
-            padding: 20px 0;
+            padding: 12px 20px;
+            background: var(--bg-glass);
+            backdrop-filter: blur(20px);
+            border-radius: var(--radius-lg);
+            border: 1px solid var(--border);
+            box-shadow: var(--shadow-md);
         }
 
         .brand {
             display: flex;
             align-items: center;
-            gap: 18px;
+            gap: 14px;
         }
 
-        /* ===== 顶部动态LOGO - 统一透明背景 ===== */
         .brand-logo {
-            width: 64px;
-            height: 64px;
-            border-radius: var(--radius-md);
+            width: 48px;
+            height: 48px;
+            border-radius: var(--radius-sm);
             overflow: hidden;
-            position: relative;
-            flex-shrink: 0;
             background: transparent;
         }
 
@@ -179,46 +188,59 @@ HTML_TEMPLATE = """
             object-fit: contain;
         }
 
-        .brand-text h1 {
-            font-family: 'Space Grotesk', sans-serif;
-            font-size: 1.8rem;
-            font-weight: 700;
-            background: var(--gradient-brand);
-            -webkit-background-clip: text;
-            -webkit-text-fill-color: transparent;
-            background-clip: text;
-            line-height: 1.1;
-        }
-
         .brand-text span {
-            font-size: 0.7rem;
-            color: var(--text-muted);
-            font-weight: 500;
-            letter-spacing: 0.2em;
+            font-family: 'Space Grotesk', sans-serif;
+            font-size: 0.85rem;
+            color: var(--text-secondary);
+            font-weight: 600;
+            letter-spacing: 0.12em;
             text-transform: uppercase;
-            margin-top: 4px;
-            display: block;
         }
 
-        .topbar-actions {
+        /* HUD indicators */
+        .hud-indicators {
             display: flex;
             align-items: center;
-            gap: 16px;
+            gap: 24px;
+        }
+
+        .hud-item {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 2px;
+        }
+
+        .hud-value {
+            font-size: 1.4rem;
+            font-weight: 700;
+            color: var(--text-primary);
+            font-variant-numeric: tabular-nums;
+            line-height: 1;
+        }
+
+        .hud-value.success { color: var(--success); }
+        .hud-value.warning { color: var(--warning); }
+
+        .hud-label {
+            font-size: 0.65rem;
+            color: var(--text-muted);
+            text-transform: uppercase;
+            letter-spacing: 0.1em;
+            font-weight: 600;
         }
 
         .connection-badge {
             display: flex;
             align-items: center;
-            gap: 10px;
-            padding: 10px 20px;
-            background: var(--bg-card);
+            gap: 8px;
+            padding: 8px 16px;
+            background: var(--bg-warm);
             border: 1px solid var(--border);
             border-radius: 100px;
-            font-size: 0.8rem;
+            font-size: 0.75rem;
             font-weight: 600;
             color: var(--text-secondary);
-            box-shadow: var(--shadow-sm);
-            transition: all 0.3s ease;
         }
 
         .connection-dot {
@@ -245,84 +267,114 @@ HTML_TEMPLATE = """
             50% { opacity: 0.7; transform: scale(1.2); }
         }
 
-        .main {
+        /* ===== Main dashboard - Three column layout ===== */
+        .dashboard {
             display: grid;
-            grid-template-columns: 1fr 340px;
-            gap: 24px;
-            padding: 8px 0 24px;
-            align-items: stretch;
+            grid-template-columns: 300px 1fr 300px;
+            gap: 20px;
+            min-height: 0;
         }
 
-        @media (max-width: 980px) {
-            .main { grid-template-columns: 1fr; }
-            .sidebar { order: -1; }
-            .app { padding: 0 20px; }
+        @media (max-width: 1200px) {
+            .dashboard { 
+                grid-template-columns: 1fr; 
+                grid-template-rows: auto 1fr auto;
+            }
+            .panel-left, .panel-right { 
+                display: grid;
+                grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+                gap: 12px;
+            }
         }
 
-        /* ===== 聊天面板 ===== */
-        .chat-panel {
+        /* ===== Left control panel ===== */
+        .panel-left {
+            display: flex;
+            flex-direction: column;
+            gap: 16px;
+        }
+
+        /* ===== Center console ===== */
+        .center-console {
+            display: flex;
+            flex-direction: column;
             background: var(--bg-card);
             border-radius: var(--radius-xl);
             border: 1px solid var(--border);
-            box-shadow: var(--shadow-lg), var(--shadow-glow);
-            display: flex;
-            flex-direction: column;
-            height: calc(100vh - 140px);
-            min-height: 600px;
+            box-shadow: var(--shadow-cockpit);
             overflow: hidden;
+            position: relative;
         }
 
-        .chat-header {
-            padding: 20px 24px;
-            border-bottom: 1px solid var(--border);
+        /* Center top decoration line */
+        .center-console::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 50%;
+            transform: translateX(-50%);
+            width: 60%;
+            height: 3px;
+            background: var(--gradient-brand);
+            border-radius: 0 0 4px 4px;
+        }
+
+        .console-header {
+            padding: 20px 24px 16px;
             display: flex;
             align-items: center;
             gap: 16px;
-            background: var(--bg-elevated);
+            border-bottom: 1px solid var(--border);
         }
 
-        /* 助手头像 - 统一透明背景 */
-        .chat-avatar {
-            width: 52px;
-            height: 52px;
-            border-radius: var(--radius-md);
-            overflow: hidden;
+        .assistant-orb {
+            width: 56px;
+            height: 56px;
+            border-radius: 50%;
+            background: var(--gradient-soft);
+            display: flex;
+            align-items: center;
+            justify-content: center;
             position: relative;
             box-shadow: var(--shadow-md);
-            flex-shrink: 0;
-            background: transparent;
+            overflow: hidden;
         }
 
-        .chat-avatar img {
+        .assistant-orb img {
             width: 100%;
             height: 100%;
             object-fit: contain;
         }
 
-        .chat-avatar::after {
+        .assistant-orb::after {
             content: '';
             position: absolute;
-            inset: 0;
-            border-radius: inherit;
-            box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.1);
+            inset: -2px;
+            border-radius: 50%;
+            border: 2px solid transparent;
+            background: var(--gradient-brand) border-box;
+            -webkit-mask: linear-gradient(#fff 0 0) padding-box, linear-gradient(#fff 0 0);
+            mask: linear-gradient(#fff 0 0) padding-box, linear-gradient(#fff 0 0);
+            -webkit-mask-composite: xor;
+            mask-composite: exclude;
+            opacity: 0.5;
         }
 
-        .chat-info h2 {
-            font-size: 1.05rem;
+        .assistant-info h2 {
+            font-size: 1.1rem;
             font-weight: 600;
             color: var(--text-primary);
         }
 
-        .chat-info p {
-            font-size: 0.78rem;
+        .assistant-info p {
+            font-size: 0.75rem;
             color: var(--text-muted);
-            margin-top: 2px;
             display: flex;
             align-items: center;
             gap: 6px;
         }
 
-        .chat-info p::before {
+        .assistant-info p::before {
             content: '';
             width: 6px;
             height: 6px;
@@ -331,31 +383,29 @@ HTML_TEMPLATE = """
             animation: dotPulse 2s ease-in-out infinite;
         }
 
-        /* 消息区 */
+        /* Message area */
         .chat-messages {
             flex: 1;
             overflow-y: auto;
-            padding: 24px;
+            padding: 20px 24px;
             scroll-behavior: smooth;
+            min-height: 200px;
         }
 
-        .chat-messages::-webkit-scrollbar { width: 6px; }
+        .chat-messages::-webkit-scrollbar { width: 5px; }
         .chat-messages::-webkit-scrollbar-track { background: transparent; }
         .chat-messages::-webkit-scrollbar-thumb { 
             background: var(--border-strong); 
             border-radius: 10px; 
         }
-        .chat-messages::-webkit-scrollbar-thumb:hover {
-            background: var(--text-muted);
-        }
 
         .message {
-            margin-bottom: 20px;
+            margin-bottom: 16px;
             animation: msgSlide 0.4s cubic-bezier(0.16, 1, 0.3, 1);
         }
 
         @keyframes msgSlide {
-            from { opacity: 0; transform: translateY(16px); }
+            from { opacity: 0; transform: translateY(12px); }
             to { opacity: 1; transform: translateY(0); }
         }
 
@@ -372,20 +422,20 @@ HTML_TEMPLATE = """
         }
 
         .message-meta {
-            font-size: 0.68rem;
+            font-size: 0.65rem;
             color: var(--text-muted);
-            margin-bottom: 6px;
+            margin-bottom: 4px;
             font-weight: 600;
             letter-spacing: 0.05em;
             text-transform: uppercase;
         }
 
         .message-bubble {
-            max-width: 72%;
-            padding: 16px 20px;
+            max-width: 80%;
+            padding: 14px 18px;
             border-radius: var(--radius-lg);
-            font-size: 0.95rem;
-            line-height: 1.65;
+            font-size: 0.9rem;
+            line-height: 1.6;
             word-wrap: break-word;
         }
 
@@ -393,7 +443,7 @@ HTML_TEMPLATE = """
             background: var(--accent);
             color: #fff;
             border-bottom-right-radius: 6px;
-            box-shadow: 0 2px 12px rgba(59, 130, 246, 0.25);
+            box-shadow: 0 2px 12px rgba(59, 130, 246, 0.2);
         }
 
         .assistant .message-bubble {
@@ -406,43 +456,43 @@ HTML_TEMPLATE = """
         .function-tag {
             display: inline-flex;
             align-items: center;
-            gap: 8px;
-            margin-top: 12px;
-            padding: 10px 14px;
+            gap: 6px;
+            margin-top: 10px;
+            padding: 8px 12px;
             background: var(--accent-soft);
             border: 1px solid var(--accent-medium);
             border-radius: var(--radius-sm);
-            font-size: 0.78rem;
+            font-size: 0.72rem;
             color: var(--accent);
             font-family: 'JetBrains Mono', monospace;
             font-weight: 500;
         }
 
         .function-tag svg {
-            width: 14px;
-            height: 14px;
+            width: 12px;
+            height: 12px;
             stroke: var(--accent);
         }
 
-        /* 输入区 */
-        .chat-input-wrap {
-            padding: 20px 24px;
+        /* Input area */
+        .console-input {
+            padding: 16px 20px;
             border-top: 1px solid var(--border);
             background: var(--bg-elevated);
         }
 
         .typing-indicator {
             display: none;
-            padding: 0 24px 14px;
-            gap: 6px;
+            padding: 0 20px 12px;
+            gap: 5px;
             align-items: center;
         }
 
         .typing-indicator.show { display: flex; }
 
         .typing-indicator span {
-            width: 8px;
-            height: 8px;
+            width: 7px;
+            height: 7px;
             background: var(--accent);
             border-radius: 50%;
             animation: typingBounce 1.4s ease-in-out infinite;
@@ -458,7 +508,7 @@ HTML_TEMPLATE = """
 
         .input-row {
             display: flex;
-            gap: 12px;
+            gap: 10px;
         }
 
         .input-field {
@@ -466,9 +516,9 @@ HTML_TEMPLATE = """
             background: var(--bg-warm);
             border: 2px solid transparent;
             border-radius: var(--radius-md);
-            padding: 16px 20px;
+            padding: 14px 18px;
             color: var(--text-primary);
-            font-size: 0.95rem;
+            font-size: 0.9rem;
             font-family: inherit;
             outline: none;
             transition: all 0.25s ease;
@@ -479,7 +529,7 @@ HTML_TEMPLATE = """
         .input-field:focus {
             background: var(--bg-card);
             border-color: var(--accent);
-            box-shadow: 0 0 0 4px var(--accent-soft);
+            box-shadow: 0 0 0 3px var(--accent-soft);
         }
 
         .btn-group {
@@ -491,9 +541,9 @@ HTML_TEMPLATE = """
             background: var(--accent);
             border: none;
             border-radius: var(--radius-md);
-            padding: 0 20px;
+            padding: 0 18px;
             color: #fff;
-            font-size: 0.9rem;
+            font-size: 0.85rem;
             font-weight: 600;
             font-family: inherit;
             cursor: pointer;
@@ -501,7 +551,7 @@ HTML_TEMPLATE = """
             display: flex;
             align-items: center;
             justify-content: center;
-            gap: 10px;
+            gap: 8px;
         }
 
         .send-btn:hover, .voice-btn:hover {
@@ -509,24 +559,20 @@ HTML_TEMPLATE = """
         }
 
         .send-btn:active, .voice-btn:active { 
-            background: var(--accent-dark);
             transform: scale(0.98);
         }
 
         .send-btn:disabled, .voice-btn:disabled {
             opacity: 0.5;
             cursor: not-allowed;
-            background: var(--accent);
         }
 
-        .send-btn svg, .voice-btn svg { width: 20px; height: 20px; }
+        .send-btn svg, .voice-btn svg { width: 18px; height: 18px; }
 
-        /* 语音按钮特殊状态 */
         .voice-btn {
-            width: 52px;
+            width: 48px;
             padding: 0;
             position: relative;
-            overflow: hidden;
         }
 
         .voice-btn.listening {
@@ -540,15 +586,311 @@ HTML_TEMPLATE = """
 
         @keyframes voicePulse {
             0%, 100% { box-shadow: 0 0 0 0 rgba(239, 68, 68, 0.4); }
-            50% { box-shadow: 0 0 0 12px rgba(239, 68, 68, 0); }
+            50% { box-shadow: 0 0 0 10px rgba(239, 68, 68, 0); }
         }
 
-        /* ===== 语音助手浮层 ===== */
+        /* ===== Right status panel ===== */
+        .panel-right {
+            display: flex;
+            flex-direction: column;
+            gap: 16px;
+        }
+
+        /* ===== Common card style ===== */
+        .widget {
+            background: var(--bg-card);
+            border-radius: var(--radius-lg);
+            border: 1px solid var(--border);
+            box-shadow: var(--shadow-md);
+            overflow: hidden;
+        }
+
+        .widget-header {
+            padding: 12px 16px;
+            border-bottom: 1px solid var(--border);
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            background: var(--bg-elevated);
+        }
+
+        .widget-icon {
+            width: 32px;
+            height: 32px;
+            background: var(--gradient-soft);
+            border-radius: var(--radius-sm);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 1rem;
+        }
+
+        .widget-header h3 {
+            font-size: 0.85rem;
+            font-weight: 600;
+            color: var(--text-primary);
+        }
+
+        .widget-body { padding: 14px 16px; }
+
+        /* Vehicle status grid */
+        .status-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 10px;
+        }
+
+        .status-item {
+            background: var(--bg-warm);
+            border-radius: var(--radius-sm);
+            padding: 12px;
+            border: 1px solid var(--border);
+            transition: all 0.25s ease;
+        }
+
+        .status-item:hover {
+            border-color: var(--accent-medium);
+            background: var(--accent-soft);
+        }
+
+        .status-label {
+            font-size: 0.65rem;
+            color: var(--text-muted);
+            text-transform: uppercase;
+            letter-spacing: 0.08em;
+            font-weight: 600;
+            margin-bottom: 4px;
+        }
+
+        .status-value {
+            font-size: 1rem;
+            font-weight: 700;
+            color: var(--text-primary);
+        }
+
+        .status-value.active { color: var(--success); }
+        .status-value.inactive { color: var(--text-muted); }
+
+        /* Battery gauge */
+        .battery-gauge {
+            display: flex;
+            align-items: center;
+            gap: 14px;
+            padding: 4px 0;
+        }
+
+        .gauge-visual {
+            position: relative;
+            width: 64px;
+            height: 64px;
+        }
+
+        .gauge-circle {
+            width: 100%;
+            height: 100%;
+            border-radius: 50%;
+            background: conic-gradient(
+                var(--success) calc(var(--percent, 78) * 3.6deg),
+                var(--bg-warm) calc(var(--percent, 78) * 3.6deg)
+            );
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .gauge-inner {
+            width: 48px;
+            height: 48px;
+            background: var(--bg-card);
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 0.9rem;
+            font-weight: 700;
+            color: var(--text-primary);
+        }
+
+        .gauge-info {
+            flex: 1;
+        }
+
+        .gauge-info .label {
+            font-size: 0.7rem;
+            color: var(--text-muted);
+            margin-bottom: 2px;
+        }
+
+        .gauge-info .value {
+            font-size: 1.1rem;
+            font-weight: 700;
+            color: var(--text-primary);
+        }
+
+        .gauge-info .sub {
+            font-size: 0.7rem;
+            color: var(--text-muted);
+            margin-top: 2px;
+        }
+
+        /* Quick actions */
+        .quick-actions {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 8px;
+        }
+
+        .quick-btn {
+            background: var(--bg-warm);
+            border: 1.5px solid var(--border);
+            border-radius: var(--radius-sm);
+            padding: 10px 12px;
+            color: var(--text-primary);
+            font-size: 0.78rem;
+            font-family: inherit;
+            font-weight: 500;
+            cursor: pointer;
+            text-align: center;
+            transition: all 0.25s ease;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 6px;
+        }
+
+        .quick-btn:hover {
+            background: var(--accent-soft);
+            border-color: var(--accent);
+            color: var(--accent);
+            transform: translateY(-2px);
+        }
+
+        .quick-btn .icon {
+            font-size: 1.2rem;
+        }
+
+        /* Voice settings */
+        .voice-settings {
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+        }
+
+        .voice-toggle {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 10px 12px;
+            background: var(--bg-warm);
+            border-radius: var(--radius-sm);
+            border: 1px solid var(--border);
+        }
+
+        .voice-toggle-label {
+            font-size: 0.8rem;
+            color: var(--text-primary);
+            font-weight: 500;
+        }
+
+        .toggle-switch {
+            position: relative;
+            width: 44px;
+            height: 24px;
+        }
+
+        .toggle-switch input {
+            opacity: 0;
+            width: 0;
+            height: 0;
+        }
+
+        .toggle-slider {
+            position: absolute;
+            cursor: pointer;
+            inset: 0;
+            background: var(--border-strong);
+            border-radius: 24px;
+            transition: 0.3s;
+        }
+
+        .toggle-slider::before {
+            content: '';
+            position: absolute;
+            width: 18px;
+            height: 18px;
+            left: 3px;
+            bottom: 3px;
+            background: white;
+            border-radius: 50%;
+            transition: 0.3s;
+            box-shadow: var(--shadow-sm);
+        }
+
+        .toggle-switch input:checked + .toggle-slider {
+            background: var(--accent);
+        }
+
+        .toggle-switch input:checked + .toggle-slider::before {
+            transform: translateX(20px);
+        }
+
+        /* ===== Bottom control bar ===== */
+        .control-bar {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 16px;
+            padding: 12px 20px;
+            background: var(--bg-glass);
+            backdrop-filter: blur(20px);
+            border-radius: var(--radius-lg);
+            border: 1px solid var(--border);
+        }
+
+        .control-btn {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 4px;
+            padding: 10px 20px;
+            background: var(--bg-warm);
+            border: 1px solid var(--border);
+            border-radius: var(--radius-md);
+            cursor: pointer;
+            transition: all 0.25s ease;
+            min-width: 80px;
+        }
+
+        .control-btn:hover {
+            background: var(--accent-soft);
+            border-color: var(--accent);
+        }
+
+        .control-btn .icon {
+            font-size: 1.3rem;
+        }
+
+        .control-btn .label {
+            font-size: 0.7rem;
+            color: var(--text-secondary);
+            font-weight: 500;
+        }
+
+        .control-btn.active {
+            background: var(--accent-soft);
+            border-color: var(--accent);
+        }
+
+        .control-btn.active .label {
+            color: var(--accent);
+        }
+
+        /* ===== Voice assistant overlay ===== */
         .voice-overlay {
             position: fixed;
             inset: 0;
-            background: rgba(0, 0, 0, 0.6);
-            backdrop-filter: blur(8px);
+            background: rgba(0, 0, 0, 0.5);
+            backdrop-filter: blur(12px);
             display: flex;
             align-items: center;
             justify-content: center;
@@ -566,9 +908,9 @@ HTML_TEMPLATE = """
         .voice-assistant {
             background: var(--bg-card);
             border-radius: var(--radius-xl);
-            padding: 48px;
+            padding: 40px;
             text-align: center;
-            max-width: 420px;
+            max-width: 400px;
             width: 90%;
             box-shadow: var(--shadow-lg);
             transform: scale(0.9);
@@ -580,9 +922,9 @@ HTML_TEMPLATE = """
         }
 
         .voice-avatar {
-            width: 120px;
-            height: 120px;
-            margin: 0 auto 24px;
+            width: 100px;
+            height: 100px;
+            margin: 0 auto 20px;
             border-radius: 50%;
             background: transparent;
             display: flex;
@@ -600,11 +942,10 @@ HTML_TEMPLATE = """
         .voice-avatar::before {
             content: '';
             position: absolute;
-            inset: -8px;
+            inset: -6px;
             border-radius: 50%;
             border: 3px solid var(--accent);
             opacity: 0;
-            animation: none;
         }
 
         .voice-overlay.listening .voice-avatar::before {
@@ -618,31 +959,31 @@ HTML_TEMPLATE = """
         }
 
         .voice-status {
-            font-size: 1.4rem;
+            font-size: 1.3rem;
             font-weight: 600;
             color: var(--text-primary);
-            margin-bottom: 8px;
+            margin-bottom: 6px;
         }
 
         .voice-hint {
-            font-size: 0.9rem;
+            font-size: 0.85rem;
             color: var(--text-muted);
-            margin-bottom: 24px;
+            margin-bottom: 20px;
         }
 
         .voice-transcript {
             background: var(--bg-warm);
             border-radius: var(--radius-md);
-            padding: 16px 20px;
-            min-height: 60px;
-            font-size: 1rem;
+            padding: 14px 18px;
+            min-height: 50px;
+            font-size: 0.95rem;
             color: var(--text-primary);
-            margin-bottom: 24px;
+            margin-bottom: 20px;
             text-align: left;
         }
 
         .voice-transcript:empty::before {
-            content: '等待语音输入...';
+            content: 'Waiting for voice input...';
             color: var(--text-muted);
         }
 
@@ -651,13 +992,13 @@ HTML_TEMPLATE = """
             align-items: center;
             justify-content: center;
             gap: 4px;
-            height: 48px;
-            margin-bottom: 24px;
+            height: 40px;
+            margin-bottom: 20px;
         }
 
         .voice-waveform span {
             width: 4px;
-            height: 24px;
+            height: 20px;
             background: var(--accent);
             border-radius: 2px;
             animation: waveform 1s ease-in-out infinite;
@@ -670,17 +1011,17 @@ HTML_TEMPLATE = """
         .voice-waveform span:nth-child(5) { animation-delay: 0.4s; }
 
         @keyframes waveform {
-            0%, 100% { height: 12px; }
-            50% { height: 40px; }
+            0%, 100% { height: 10px; }
+            50% { height: 36px; }
         }
 
         .voice-cancel {
             background: var(--bg-warm);
             border: 1px solid var(--border);
             border-radius: var(--radius-md);
-            padding: 12px 32px;
+            padding: 10px 28px;
             color: var(--text-secondary);
-            font-size: 0.9rem;
+            font-size: 0.85rem;
             font-weight: 500;
             cursor: pointer;
             transition: all 0.2s ease;
@@ -692,20 +1033,20 @@ HTML_TEMPLATE = """
             color: var(--danger);
         }
 
-        /* ===== 唤醒词指示器 ===== */
+        /* Wake word indicator */
         .wake-indicator {
             position: fixed;
-            bottom: 32px;
+            bottom: 100px;
             left: 50%;
             transform: translateX(-50%);
             background: var(--bg-card);
             border: 1px solid var(--border);
             border-radius: 100px;
-            padding: 12px 24px;
+            padding: 10px 20px;
             display: flex;
             align-items: center;
-            gap: 12px;
-            font-size: 0.85rem;
+            gap: 10px;
+            font-size: 0.8rem;
             color: var(--text-secondary);
             box-shadow: var(--shadow-lg);
             z-index: 100;
@@ -718,11 +1059,8 @@ HTML_TEMPLATE = """
         }
 
         .wake-indicator .mic-icon {
-            width: 20px;
-            height: 20px;
-            display: flex;
-            align-items: center;
-            justify-content: center;
+            width: 18px;
+            height: 18px;
         }
 
         .wake-indicator .mic-icon svg {
@@ -739,312 +1077,136 @@ HTML_TEMPLATE = """
             0%, 100% { transform: scale(1); }
             50% { transform: scale(1.2); }
         }
-
-        /* ===== 侧边栏 ===== */
-        .sidebar {
-            display: flex;
-            flex-direction: column;
-            gap: 20px;
-            max-height: calc(100vh - 140px);
-            overflow-y: auto;
-        }
-
-        .sidebar::-webkit-scrollbar { width: 6px; }
-        .sidebar::-webkit-scrollbar-track { background: transparent; }
-        .sidebar::-webkit-scrollbar-thumb { 
-            background: var(--border-strong); 
-            border-radius: 10px; 
-        }
-
-        .card {
-            background: var(--bg-card);
-            border-radius: var(--radius-lg);
-            border: 1px solid var(--border);
-            box-shadow: var(--shadow-md);
-            overflow: hidden;
-        }
-
-        .card-header {
-            padding: 14px 20px;
-            border-bottom: 1px solid var(--border);
-            display: flex;
-            align-items: center;
-            gap: 12px;
-            background: var(--bg-elevated);
-        }
-
-        .card-icon {
-            width: 36px;
-            height: 36px;
-            background: var(--gradient-soft);
-            border-radius: var(--radius-sm);
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            font-size: 1.1rem;
-        }
-
-        .card-header h3 {
-            font-size: 0.92rem;
-            font-weight: 600;
-            color: var(--text-primary);
-        }
-
-        .card-body { padding: 16px 20px; }
-
-        .stats-grid {
-            display: grid;
-            grid-template-columns: 1fr 1fr;
-            gap: 12px;
-        }
-
-        .stat-box {
-            background: var(--bg-warm);
-            border-radius: var(--radius-sm);
-            padding: 14px 16px;
-            border: 1px solid var(--border);
-            transition: all 0.25s ease;
-        }
-
-        .stat-box:hover {
-            border-color: var(--accent-medium);
-            background: var(--accent-soft);
-        }
-
-        .stat-label {
-            font-size: 0.68rem;
-            color: var(--text-muted);
-            text-transform: uppercase;
-            letter-spacing: 0.08em;
-            font-weight: 600;
-            margin-bottom: 6px;
-        }
-
-        .stat-value {
-            font-size: 1.1rem;
-            font-weight: 700;
-            color: var(--text-primary);
-            font-variant-numeric: tabular-nums;
-        }
-
-        .stat-value.active { color: var(--success); }
-        .stat-value.inactive { color: var(--text-muted); }
-
-        /* 电量指示器 */
-        .battery-section {
-            margin-top: 16px;
-            padding-top: 16px;
-            border-top: 1px solid var(--border);
-        }
-
-        .battery-header {
-            display: flex;
-            justify-content: space-between;
-            align-items: baseline;
-            margin-bottom: 10px;
-        }
-
-        .battery-header span {
-            font-size: 0.75rem;
-            color: var(--text-muted);
-            font-weight: 500;
-        }
-
-        .battery-header strong {
-            font-size: 1.4rem;
-            color: var(--text-primary);
-            font-weight: 700;
-        }
-
-        .battery-bar {
-            height: 12px;
-            background: var(--bg-warm);
-            border-radius: 100px;
-            overflow: hidden;
-            border: 1px solid var(--border);
-        }
-
-        .battery-fill {
-            height: 100%;
-            background: linear-gradient(90deg, #10b981 0%, #34d399 50%, #6ee7b7 100%);
-            border-radius: 100px;
-            transition: width 0.6s cubic-bezier(0.16, 1, 0.3, 1);
-            position: relative;
-        }
-
-        .battery-fill::after {
-            content: '';
-            position: absolute;
-            inset: 0;
-            background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.4), transparent);
-            animation: batteryShine 2.5s ease-in-out infinite;
-        }
-
-        @keyframes batteryShine {
-            0%, 100% { transform: translateX(-100%); }
-            50% { transform: translateX(100%); }
-        }
-
-        .battery-meta {
-            display: flex;
-            justify-content: space-between;
-            margin-top: 8px;
-            font-size: 0.72rem;
-            color: var(--text-muted);
-        }
-
-        /* 快捷按钮 */
-        .quick-grid {
-            display: flex;
-            flex-direction: column;
-            gap: 8px;
-        }
-
-        .quick-btn {
-            background: var(--bg-warm);
-            border: 1.5px solid var(--border);
-            border-radius: var(--radius-sm);
-            padding: 12px 14px;
-            color: var(--text-primary);
-            font-size: 0.85rem;
-            font-family: inherit;
-            font-weight: 500;
-            cursor: pointer;
-            text-align: left;
-            transition: all 0.25s ease;
-            display: flex;
-            align-items: center;
-            gap: 10px;
-        }
-
-        .quick-btn:hover {
-            background: var(--accent-soft);
-            border-color: var(--accent);
-            color: var(--accent);
-            transform: translateX(4px);
-        }
-
-        .quick-btn .icon {
-            width: 28px;
-            height: 28px;
-            background: var(--bg-card);
-            border-radius: 8px;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            font-size: 0.9rem;
-            transition: all 0.25s ease;
-            box-shadow: var(--shadow-sm);
-        }
-
-        .quick-btn:hover .icon {
-            background: var(--bg-card);
-            transform: scale(1.1) rotate(-5deg);
-            box-shadow: var(--shadow-md);
-        }
-
-        /* 语音设置卡片 */
-        .voice-settings {
-            display: flex;
-            flex-direction: column;
-            gap: 10px;
-        }
-
-        .voice-toggle {
-            display: flex;
-            align-items: center;
-            justify-content: space-between;
-            padding: 10px 14px;
-            background: var(--bg-warm);
-            border-radius: var(--radius-sm);
-            border: 1px solid var(--border);
-        }
-
-        .voice-toggle-label {
-            font-size: 0.85rem;
-            color: var(--text-primary);
-            font-weight: 500;
-        }
-
-        .toggle-switch {
-            position: relative;
-            width: 48px;
-            height: 26px;
-        }
-
-        .toggle-switch input {
-            opacity: 0;
-            width: 0;
-            height: 0;
-        }
-
-        .toggle-slider {
-            position: absolute;
-            cursor: pointer;
-            inset: 0;
-            background: var(--border-strong);
-            border-radius: 26px;
-            transition: 0.3s;
-        }
-
-        .toggle-slider::before {
-            content: '';
-            position: absolute;
-            width: 20px;
-            height: 20px;
-            left: 3px;
-            bottom: 3px;
-            background: white;
-            border-radius: 50%;
-            transition: 0.3s;
-            box-shadow: var(--shadow-sm);
-        }
-
-        .toggle-switch input:checked + .toggle-slider {
-            background: var(--accent);
-        }
-
-        .toggle-switch input:checked + .toggle-slider::before {
-            transform: translateX(22px);
-        }
     </style>
 </head>
 <body>
-    <div class="app">
-        <nav class="topbar">
+    <div class="cockpit">
+        <!-- Top HUD -->
+        <header class="hud-bar">
             <div class="brand">
                 <div class="brand-logo">
                     <img src="/static/brand_logo.gif" alt="Friday Logo">
                 </div>
                 <div class="brand-text">
-                    <h1>Friday</h1>
                     <span>Intelligent Cockpit System</span>
                 </div>
             </div>
-            <div class="topbar-actions">
-                <div class="connection-badge" id="connectionStatus">
-                    <div class="connection-dot"></div>
-                    <span>连接中...</span>
+            
+            <div class="hud-indicators">
+                <div class="hud-item">
+                    <div class="hud-value success" id="batteryStatus">78%</div>
+                    <div class="hud-label">Battery</div>
+                </div>
+                <div class="hud-item">
+                    <div class="hud-value" id="rangeStatus">320</div>
+                    <div class="hud-label">Range km</div>
+                </div>
+                <div class="hud-item">
+                    <div class="hud-value" id="acTemp">24°</div>
+                    <div class="hud-label">Cabin Temp</div>
                 </div>
             </div>
-        </nav>
+            
+            <div class="connection-badge" id="connectionStatus">
+                <div class="connection-dot"></div>
+                <span>Connecting...</span>
+            </div>
+        </header>
 
-        <main class="main">
-            <section class="chat-panel">
-                <div class="chat-header">
-                    <div class="chat-avatar">
-                        <img src="/static/assistant_avatar.png" alt="Friday助手">
+        <!-- Main dashboard -->
+        <main class="dashboard">
+            <!-- Left panel -->
+            <div class="panel-left">
+                <div class="widget">
+                    <div class="widget-header">
+                        <div class="widget-icon">🚗</div>
+                        <h3>Vehicle Control</h3>
                     </div>
-                    <div class="chat-info">
-                        <h2>Friday 你的智能助手</h2>
-                        <p>在线 · 随时为您效劳</p>
+                    <div class="widget-body">
+                        <div class="status-grid">
+                            <div class="status-item">
+                                <div class="status-label">AC</div>
+                                <div class="status-value inactive" id="acStatus">Off</div>
+                            </div>
+                            <div class="status-item">
+                                <div class="status-label">Music</div>
+                                <div class="status-value inactive" id="musicStatus">Stopped</div>
+                            </div>
+                            <div class="status-item">
+                                <div class="status-label">Navigation</div>
+                                <div class="status-value inactive" id="navStatus">Inactive</div>
+                            </div>
+                            <div class="status-item">
+                                <div class="status-label">Windows</div>
+                                <div class="status-value inactive" id="windowStatus">Closed</div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="widget">
+                    <div class="widget-header">
+                        <div class="widget-icon">🔋</div>
+                        <h3>Energy Status</h3>
+                    </div>
+                    <div class="widget-body">
+                        <div class="battery-gauge">
+                            <div class="gauge-visual">
+                                <div class="gauge-circle" id="batteryGauge" style="--percent: 78">
+                                    <div class="gauge-inner" id="batteryPercent">78%</div>
+                                </div>
+                            </div>
+                            <div class="gauge-info">
+                                <div class="label">Battery Level</div>
+                                <div class="value" id="batteryKwh">58.5 kWh</div>
+                                <div class="sub">Est. range <span id="rangeKm">320</span> km</div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="widget">
+                    <div class="widget-header">
+                        <div class="widget-icon">🎤</div>
+                        <h3>Voice Settings</h3>
+                    </div>
+                    <div class="widget-body">
+                        <div class="voice-settings">
+                            <div class="voice-toggle">
+                                <span class="voice-toggle-label">Wake Word</span>
+                                <label class="toggle-switch">
+                                    <input type="checkbox" id="wakeWordToggle" onchange="toggleWakeWord(this.checked)">
+                                    <span class="toggle-slider"></span>
+                                </label>
+                            </div>
+                            <div class="voice-toggle">
+                                <span class="voice-toggle-label">Voice Response</span>
+                                <label class="toggle-switch">
+                                    <input type="checkbox" id="ttsToggle" checked onchange="toggleTTS(this.checked)">
+                                    <span class="toggle-slider"></span>
+                                </label>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Center console -->
+            <section class="center-console">
+                <div class="console-header">
+                    <div class="assistant-orb">
+                        <img src="/static/assistant_avatar.png" alt="Friday">
+                    </div>
+                    <div class="assistant-info">
+                        <h2>Friday Assistant</h2>
+                        <p>Online · Ready to serve</p>
                     </div>
                 </div>
 
                 <div class="chat-messages" id="chatMessages">
                     <div class="message assistant">
                         <div class="message-meta">Friday</div>
-                        <div class="message-bubble">您好，我是您的智能座舱助手 Friday。您可以通过文字或语音与我交流，或者说 "Hey Friday" 唤醒我。需要我为您调节车内环境、规划路线，还是来点音乐？</div>
+                        <div class="message-bubble">Hello! I'm Friday, your intelligent cockpit assistant. You can communicate with me via text or voice, or say "Hey Friday" to wake me up. Would you like me to adjust the cabin environment, plan a route, or play some music?</div>
                     </div>
                 </div>
 
@@ -1052,11 +1214,11 @@ HTML_TEMPLATE = """
                     <span></span><span></span><span></span>
                 </div>
 
-                <div class="chat-input-wrap">
+                <div class="console-input">
                     <div class="input-row">
-                        <input type="text" class="input-field" id="userInput" placeholder="输入指令或问题..." autocomplete="off">
+                        <input type="text" class="input-field" id="userInput" placeholder="Enter command or question..." autocomplete="off">
                         <div class="btn-group">
-                            <button class="voice-btn" id="voiceBtn" onclick="toggleVoice()" title="语音输入">
+                            <button class="voice-btn" id="voiceBtn" onclick="toggleVoice()" title="Voice input">
                                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                                     <path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"></path>
                                     <path d="M19 10v2a7 7 0 0 1-14 0v-2"></path>
@@ -1065,7 +1227,7 @@ HTML_TEMPLATE = """
                                 </svg>
                             </button>
                             <button class="send-btn" id="sendBtn" onclick="sendMessage()">
-                                发送
+                                Send
                                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
                                     <line x1="22" y1="2" x2="11" y2="13"></line>
                                     <polygon points="22 2 15 22 11 13 2 9 22 2"></polygon>
@@ -1076,120 +1238,101 @@ HTML_TEMPLATE = """
                 </div>
             </section>
 
-            <aside class="sidebar">
-                <div class="card">
-                    <div class="card-header">
-                        <div class="card-icon">🚗</div>
-                        <h3>车辆状态</h3>
+            <!-- Right panel -->
+            <div class="panel-right">
+                <div class="widget">
+                    <div class="widget-header">
+                        <div class="widget-icon">⚡</div>
+                        <h3>Quick Actions</h3>
                     </div>
-                    <div class="card-body">
-                        <div class="stats-grid">
-                            <div class="stat-box">
-                                <div class="stat-label">空调系统</div>
-                                <div class="stat-value inactive" id="acStatus">关闭</div>
-                            </div>
-                            <div class="stat-box">
-                                <div class="stat-label">车内温度</div>
-                                <div class="stat-value" id="acTemp">24°C</div>
-                            </div>
-                            <div class="stat-box">
-                                <div class="stat-label">媒体播放</div>
-                                <div class="stat-value inactive" id="musicStatus">停止</div>
-                            </div>
-                            <div class="stat-box">
-                                <div class="stat-label">导航状态</div>
-                                <div class="stat-value inactive" id="navStatus">未启动</div>
-                            </div>
-                        </div>
-
-                        <div class="battery-section">
-                            <div class="battery-header">
-                                <span>电池电量</span>
-                                <strong id="batteryStatus">78%</strong>
-                            </div>
-                            <div class="battery-bar">
-                                <div class="battery-fill" id="batteryFill" style="width: 78%"></div>
-                            </div>
-                            <div class="battery-meta">
-                                <span>预计续航</span>
-                                <span id="rangeStatus">320 km</span>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-
-                <!-- 语音设置卡片 -->
-                <div class="card">
-                    <div class="card-header">
-                        <div class="card-icon">🎤</div>
-                        <h3>语音设置</h3>
-                    </div>
-                    <div class="card-body">
-                        <div class="voice-settings">
-                            <div class="voice-toggle">
-                                <span class="voice-toggle-label">唤醒词检测</span>
-                                <label class="toggle-switch">
-                                    <input type="checkbox" id="wakeWordToggle" onchange="toggleWakeWord(this.checked)">
-                                    <span class="toggle-slider"></span>
-                                </label>
-                            </div>
-                            <div class="voice-toggle">
-                                <span class="voice-toggle-label">语音播报</span>
-                                <label class="toggle-switch">
-                                    <input type="checkbox" id="ttsToggle" checked onchange="toggleTTS(this.checked)">
-                                    <span class="toggle-slider"></span>
-                                </label>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-
-                <div class="card">
-                    <div class="card-header">
-                        <div class="card-icon">⚡</div>
-                        <h3>快捷指令</h3>
-                    </div>
-                    <div class="card-body">
-                        <div class="quick-grid">
-                            <button class="quick-btn" onclick="quickSend('把空调打开')">
-                                <span class="icon">❄️</span>启动空调
+                    <div class="widget-body">
+                        <div class="quick-actions">
+                            <button class="quick-btn" onclick="quickSend('Turn on the AC')">
+                                <span class="icon">❄️</span>
+                                AC
                             </button>
-                            <button class="quick-btn" onclick="quickSend('查看车辆状态')">
-                                <span class="icon">📊</span>车辆状态
+                            <button class="quick-btn" onclick="quickSend('Play music')">
+                                <span class="icon">🎵</span>
+                                Music
                             </button>
-                            <button class="quick-btn" onclick="quickSend('播放音乐')">
-                                <span class="icon">🎵</span>播放音乐
+                            <button class="quick-btn" onclick="quickSend('Open all windows')">
+                                <span class="icon">🪟</span>
+                                Windows
                             </button>
-                            <button class="quick-btn" onclick="quickSend('打开全部车窗')">
-                                <span class="icon">🪟</span>开启车窗
+                            <button class="quick-btn" onclick="quickSend('Navigate to nearest charging station')">
+                                <span class="icon">🔋</span>
+                                Charging
                             </button>
-                            <button class="quick-btn" onclick="quickSend('导航到最近的充电站')">
-                                <span class="icon">🔋</span>最近充电站
+                            <button class="quick-btn" onclick="quickSend('Check vehicle status')">
+                                <span class="icon">📊</span>
+                                Status
+                            </button>
+                            <button class="quick-btn" onclick="quickSend('Set temperature to 22 degrees')">
+                                <span class="icon">🌡️</span>
+                                Temp
                             </button>
                         </div>
                     </div>
                 </div>
-            </aside>
+
+                <div class="widget" style="flex: 1;">
+                    <div class="widget-header">
+                        <div class="widget-icon">📍</div>
+                        <h3>Navigation</h3>
+                    </div>
+                    <div class="widget-body">
+                        <div style="text-align: center; padding: 20px 0; color: var(--text-muted); font-size: 0.85rem;">
+                            <div style="font-size: 2rem; margin-bottom: 8px;">🗺️</div>
+                            No active navigation<br>
+                            <span style="font-size: 0.75rem;">Say "Navigate to..." to start</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
         </main>
+
+        <!-- Bottom control bar -->
+        <footer class="control-bar">
+            <button class="control-btn" onclick="quickSend('Turn on AC')">
+                <span class="icon">❄️</span>
+                <span class="label">AC</span>
+            </button>
+            <button class="control-btn" onclick="quickSend('Play music')">
+                <span class="icon">🎵</span>
+                <span class="label">Media</span>
+            </button>
+            <button class="control-btn" onclick="quickSend('Start navigation')">
+                <span class="icon">🧭</span>
+                <span class="label">Nav</span>
+            </button>
+            <button class="control-btn" onclick="quickSend('Check vehicle status')">
+                <span class="icon">🚗</span>
+                <span class="label">Vehicle</span>
+            </button>
+            <button class="control-btn" onclick="quickSend('Open windows')">
+                <span class="icon">🪟</span>
+                <span class="label">Windows</span>
+            </button>
+        </footer>
     </div>
 
-    <!-- 语音助手浮层 -->
+    <!-- Voice assistant overlay -->
     <div class="voice-overlay" id="voiceOverlay">
         <div class="voice-assistant">
             <div class="voice-avatar">
                 <img src="/static/assistant_avatar.png" alt="Friday">
             </div>
-            <div class="voice-status" id="voiceStatus">正在聆听...</div>
-            <div class="voice-hint" id="voiceHint">请说出您的指令</div>
+            <div class="voice-status" id="voiceStatus">Listening...</div>
+            <div class="voice-hint" id="voiceHint">Please speak your command</div>
             <div class="voice-waveform" id="voiceWaveform">
                 <span></span><span></span><span></span><span></span><span></span>
             </div>
             <div class="voice-transcript" id="voiceTranscript"></div>
-            <button class="voice-cancel" onclick="cancelVoice()">取消</button>
+            <button class="voice-cancel" onclick="cancelVoice()">Cancel</button>
         </div>
     </div>
 
-    <!-- 唤醒词指示器 -->
+    <!-- Wake word indicator -->
     <div class="wake-indicator" id="wakeIndicator" style="display: none;">
         <div class="mic-icon">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
@@ -1199,16 +1342,16 @@ HTML_TEMPLATE = """
                 <line x1="8" y1="23" x2="16" y2="23"></line>
             </svg>
         </div>
-        <span>说 "Hey Friday" 唤醒</span>
+        <span>Say "Hey Friday" to wake</span>
     </div>
 
     <script>
-        // ===== 全局状态 =====
+        // ===== Global state =====
         let ws = null;
         let isGenerating = false;
         let currentAssistantMessage = null;
         
-        // 语音相关状态
+        // Voice-related state
         let mediaRecorder = null;
         let audioChunks = [];
         let isRecording = false;
@@ -1216,11 +1359,11 @@ HTML_TEMPLATE = """
         let ttsEnabled = true;
         let recognition = null;
         
-        // ★★★ 新增：录音时间追踪，解决首次录音 WebM header 不完整问题 ★★★
+        // ★★★ New: Recording time tracking, fixes first recording WebM header incomplete issue ★★★
         let recordingStartTime = 0;
-        const MIN_RECORDING_TIME = 800;  // 最小录音时间 800ms，确保 WebM header 完整
+        const MIN_RECORDING_TIME = 800;  // Minimum recording time 800ms, ensures WebM header is complete
         
-        // ===== WebSocket连接 =====
+        // ===== WebSocket connection =====
         function connect() {
             const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
             ws = new WebSocket(`${protocol}//${window.location.host}/ws`);
@@ -1228,13 +1371,13 @@ HTML_TEMPLATE = """
             ws.onopen = () => {
                 const badge = document.getElementById('connectionStatus');
                 badge.classList.add('connected');    
-                badge.querySelector('span').textContent = '已连接';
+                badge.querySelector('span').textContent = 'Connected';
             };
 
             ws.onclose = () => {
                 const badge = document.getElementById('connectionStatus');
                 badge.classList.remove('connected');
-                badge.querySelector('span').textContent = '断开连接';
+                badge.querySelector('span').textContent = 'Disconnected';
                 setTimeout(connect, 3000);
             };
 
@@ -1281,7 +1424,7 @@ HTML_TEMPLATE = """
             const messagesDiv = document.getElementById('chatMessages');
             const messageDiv = document.createElement('div');
             messageDiv.className = `message ${role}`;
-            messageDiv.innerHTML = `<div class="message-meta">${role === 'user' ? '您' : 'Friday'}</div><div class="message-bubble">${content}</div>`;
+            messageDiv.innerHTML = `<div class="message-meta">${role === 'user' ? 'You' : 'Friday'}</div><div class="message-bubble">${content}</div>`;
             messagesDiv.appendChild(messageDiv);
             scrollToBottom();
             return messageDiv;
@@ -1315,30 +1458,50 @@ HTML_TEMPLATE = """
         function updateStatus(status) {
             if (status.ac) {
                 const acEl = document.getElementById('acStatus');
-                acEl.textContent = status.ac.on ? '运行中' : '关闭';
-                acEl.className = 'stat-value ' + (status.ac.on ? 'active' : 'inactive');
-                document.getElementById('acTemp').textContent = status.ac.temperature + '°C';
+                acEl.textContent = status.ac.on ? 'Running' : 'Off';
+                acEl.className = 'status-value ' + (status.ac.on ? 'active' : 'inactive');
+                // Update HUD temperature display
+                const tempEl = document.getElementById('acTemp');
+                if (tempEl) tempEl.textContent = status.ac.temperature + '°';
             }
             if (status.navigation) {
                 const navEl = document.getElementById('navStatus');
-                navEl.textContent = status.navigation.active ? (status.navigation.destination || '导航中') : '未启动';
-                navEl.className = 'stat-value ' + (status.navigation.active ? 'active' : 'inactive');
+                navEl.textContent = status.navigation.active ? (status.navigation.destination || 'Navigating') : 'Inactive';
+                navEl.className = 'status-value ' + (status.navigation.active ? 'active' : 'inactive');
             }
             if (status.music) {
                 const musicEl = document.getElementById('musicStatus');
-                musicEl.textContent = status.music.playing ? '播放中' : '停止';
-                musicEl.className = 'stat-value ' + (status.music.playing ? 'active' : 'inactive');
+                musicEl.textContent = status.music.playing ? 'Playing' : 'Stopped';
+                musicEl.className = 'status-value ' + (status.music.playing ? 'active' : 'inactive');
             }
             if (status.battery !== undefined) {
-                document.getElementById('batteryStatus').textContent = status.battery + '%';
-                document.getElementById('batteryFill').style.width = status.battery + '%';
+                // HUD battery display
+                const batteryStatus = document.getElementById('batteryStatus');
+                if (batteryStatus) batteryStatus.textContent = status.battery + '%';
+                
+                // Battery gauge
+                const batteryGauge = document.getElementById('batteryGauge');
+                if (batteryGauge) batteryGauge.style.setProperty('--percent', status.battery);
+                
+                const batteryPercent = document.getElementById('batteryPercent');
+                if (batteryPercent) batteryPercent.textContent = status.battery + '%';
+                
+                // Battery kWh (assuming 75kWh total capacity)
+                const batteryKwh = document.getElementById('batteryKwh');
+                if (batteryKwh) batteryKwh.textContent = (status.battery * 0.75).toFixed(1) + ' kWh';
             }
             if (status.range !== undefined) {
-                document.getElementById('rangeStatus').textContent = status.range + ' km';
+                // HUD range display
+                const rangeStatus = document.getElementById('rangeStatus');
+                if (rangeStatus) rangeStatus.textContent = status.range;
+                
+                // Detailed range display
+                const rangeKm = document.getElementById('rangeKm');
+                if (rangeKm) rangeKm.textContent = status.range;
             }
         }
 
-        // ===== 语音功能（修复版 - 解决首次录音 WebM header 不完整问题）=====
+        // ===== Voice functions (fixed version - solves first recording WebM header incomplete issue) =====
         
         async function toggleVoice() {
             if (isRecording) {
@@ -1349,8 +1512,8 @@ HTML_TEMPLATE = """
         }
 
         /**
-         * 使用 OfflineAudioContext 进行高质量重采样
-         * 关键：浏览器会自动进行抗混叠滤波，避免频率混叠问题
+         * Use OfflineAudioContext for high-quality resampling
+         * Key: Browser automatically performs anti-aliasing filter, avoids frequency aliasing
          */
         async function resampleWithOfflineContext(audioBuffer, targetSampleRate) {
             const sourceSampleRate = audioBuffer.sampleRate;
@@ -1362,7 +1525,7 @@ HTML_TEMPLATE = """
             const duration = audioBuffer.duration;
             const targetLength = Math.round(duration * targetSampleRate);
             
-            // 创建离线上下文进行重采样（会自动低通滤波）
+            // Create offline context for resampling (automatic low-pass filter)
             const offlineCtx = new OfflineAudioContext(1, targetLength, targetSampleRate);
             
             const source = offlineCtx.createBufferSource();
@@ -1372,14 +1535,14 @@ HTML_TEMPLATE = """
             
             const renderedBuffer = await offlineCtx.startRendering();
             
-            console.log(`OfflineAudioContext 重采样: ${sourceSampleRate}Hz -> ${targetSampleRate}Hz, ${renderedBuffer.length} 样本`);
+            console.log(`OfflineAudioContext resampling: ${sourceSampleRate}Hz -> ${targetSampleRate}Hz, ${renderedBuffer.length} samples`);
             
             return renderedBuffer.getChannelData(0);
         }
 
         /**
-         * ★★★ 修复后的开始录音函数 ★★★
-         * 关键修改：不使用 timeslice 参数，让浏览器自己管理数据块
+         * ★★★ Fixed start recording function ★★★
+         * Key fix: Don't use timeslice parameter, let browser manage data chunks
          */
         async function startRecording() {
             try {
@@ -1392,20 +1555,20 @@ HTML_TEMPLATE = """
                     } 
                 });
                 
-                // 显示语音浮层
+                // Show voice overlay
                 const overlay = document.getElementById('voiceOverlay');
                 overlay.classList.add('active', 'listening');
-                document.getElementById('voiceStatus').textContent = '正在聆听...';
-                document.getElementById('voiceHint').textContent = '请说出您的指令';
+                document.getElementById('voiceStatus').textContent = 'Listening...';
+                document.getElementById('voiceHint').textContent = 'Please speak your command';
                 document.getElementById('voiceTranscript').textContent = '';
                 
                 const voiceBtn = document.getElementById('voiceBtn');
                 voiceBtn.classList.add('listening');
                 
-                // 使用 MediaRecorder 录制（不会丢帧）
+                // Use MediaRecorder for recording (no frame drops)
                 audioChunks = [];
                 
-                // 选择支持的格式
+                // Select supported format
                 let mimeType = 'audio/webm;codecs=opus';
                 if (!MediaRecorder.isTypeSupported(mimeType)) {
                     mimeType = 'audio/webm';
@@ -1413,7 +1576,7 @@ HTML_TEMPLATE = """
                 if (!MediaRecorder.isTypeSupported(mimeType)) {
                     mimeType = 'audio/mp4';
                 }
-                console.log('MediaRecorder 格式:', mimeType);
+                console.log('MediaRecorder format:', mimeType);
                 
                 mediaRecorder = new MediaRecorder(stream, { 
                     mimeType: mimeType,
@@ -1423,28 +1586,28 @@ HTML_TEMPLATE = """
                 mediaRecorder.ondataavailable = (event) => {
                     if (event.data.size > 0) {
                         audioChunks.push(event.data);
-                        console.log(`收到音频块: ${event.data.size} bytes, 总计 ${audioChunks.length} 块`);
+                        console.log(`Received audio chunk: ${event.data.size} bytes, total ${audioChunks.length} chunks`);
                     }
                 };
                 
                 mediaRecorder.onstop = async () => {
-                    console.log(`录音停止，共 ${audioChunks.length} 个音频块`);
+                    console.log(`Recording stopped, total ${audioChunks.length} audio chunks`);
                     stream.getTracks().forEach(track => track.stop());
                     await processRecordedAudio(mimeType);
                 };
                 
-                // ★★★ 关键修复：不使用 timeslice 参数，让浏览器自己管理数据块 ★★★
-                // 原来是 mediaRecorder.start(250); 会导致数据分片，首次录音 header 不完整
+                // ★★★ Key fix: Don't use timeslice parameter, let browser manage data chunks ★★★
+                // Previously was mediaRecorder.start(250); which caused data fragmentation, first recording header incomplete
                 mediaRecorder.start();
                 
-                // ★★★ 记录开始时间 ★★★
+                // ★★★ Record start time ★★★
                 recordingStartTime = Date.now();
-                console.log('录音开始时间:', recordingStartTime);
+                console.log('Recording start time:', recordingStartTime);
                 
                 window.currentStream = stream;
                 isRecording = true;
                 
-                // 8秒后自动停止
+                // Auto-stop after 8 seconds
                 window.recordingTimeout = setTimeout(() => {
                     if (isRecording) {
                         stopRecording();
@@ -1452,28 +1615,28 @@ HTML_TEMPLATE = """
                 }, 8000);
                 
             } catch (error) {
-                console.error('无法访问麦克风:', error);
-                alert('无法访问麦克风，请检查权限设置');
+                console.error('Cannot access microphone:', error);
+                alert('Cannot access microphone, please check permissions');
             }
         }
 
         /**
-         * ★★★ 修复后的停止录音函数 ★★★
-         * 关键修改：添加最小录音时间保护，确保 WebM header 完整
+         * ★★★ Fixed stop recording function ★★★
+         * Key fix: Add minimum recording time protection, ensure WebM header is complete
          */
         function stopRecording() {
             clearTimeout(window.recordingTimeout);
             
-            // ★★★ 计算录音时长 ★★★
+            // ★★★ Calculate recording duration ★★★
             const recordingDuration = Date.now() - recordingStartTime;
-            console.log(`录音时长: ${recordingDuration}ms`);
+            console.log(`Recording duration: ${recordingDuration}ms`);
             
-            // ★★★ 关键修复：如果录音时间太短，等待一下再停止 ★★★
+            // ★★★ Key fix: If recording time too short, wait before stopping ★★★
             if (recordingDuration < MIN_RECORDING_TIME) {
                 const waitTime = MIN_RECORDING_TIME - recordingDuration;
-                console.log(`录音时间不足，等待 ${waitTime}ms`);
+                console.log(`Recording time insufficient, waiting ${waitTime}ms`);
                 
-                document.getElementById('voiceStatus').textContent = '正在处理...';
+                document.getElementById('voiceStatus').textContent = 'Processing...';
                 
                 setTimeout(() => {
                     doStopRecording();
@@ -1484,7 +1647,7 @@ HTML_TEMPLATE = """
         }
         
         /**
-         * ★★★ 新增：实际执行停止录音 ★★★
+         * ★★★ New: Actually execute stop recording ★★★
          */
         function doStopRecording() {
             isRecording = false;
@@ -1493,18 +1656,18 @@ HTML_TEMPLATE = """
             voiceBtn.classList.remove('listening');
             voiceBtn.classList.add('processing');
             
-            document.getElementById('voiceStatus').textContent = '正在处理...';
+            document.getElementById('voiceStatus').textContent = 'Processing...';
             document.getElementById('voiceOverlay').classList.remove('listening');
             
             if (mediaRecorder && mediaRecorder.state !== 'inactive') {
-                // ★★★ 关键修复：在停止前请求所有待处理的数据 ★★★
+                // ★★★ Key fix: Request all pending data before stopping ★★★
                 try {
                     mediaRecorder.requestData();
                 } catch (e) {
-                    console.log('requestData 不支持或已无数据');
+                    console.log('requestData not supported or no data');
                 }
                 
-                // 稍微延迟停止，确保 requestData 完成
+                // Delay stop slightly to ensure requestData completes
                 setTimeout(() => {
                     if (mediaRecorder && mediaRecorder.state !== 'inactive') {
                         mediaRecorder.stop();
@@ -1516,29 +1679,29 @@ HTML_TEMPLATE = """
         }
 
         /**
-         * ★★★ 修复后的处理录音函数 ★★★
-         * 关键修改：添加数据大小检查
+         * ★★★ Fixed process recorded audio function ★★★
+         * Key fix: Add data size check
          */
         async function processRecordedAudio(mimeType) {
             if (audioChunks.length === 0) {
-                console.warn('没有录制到音频数据');
+                console.warn('No audio data recorded');
                 handleASRResult('');
                 return;
             }
             
             try {
-                // 合并音频块
+                // Merge audio chunks
                 const audioBlob = new Blob(audioChunks, { type: mimeType });
-                console.log('录制完成，大小:', audioBlob.size, 'bytes, 块数:', audioChunks.length);
+                console.log('Recording complete, size:', audioBlob.size, 'bytes, chunks:', audioChunks.length);
                 
-                // ★★★ 关键修复：检查数据大小（WebM header 通常至少需要几百字节）★★★
+                // ★★★ Key fix: Check data size (WebM header usually needs at least a few hundred bytes) ★★★
                 if (audioBlob.size < 500) {
-                    console.warn('音频数据太小，可能不完整，尝试发送原始数据');
+                    console.warn('Audio data too small, may be incomplete, trying to send raw data');
                     await sendRawAudio(audioBlob, mimeType);
                     return;
                 }
                 
-                // 解码为 AudioBuffer
+                // Decode to AudioBuffer
                 const arrayBuffer = await audioBlob.arrayBuffer();
                 const audioContext = new (window.AudioContext || window.webkitAudioContext)();
                 
@@ -1546,37 +1709,37 @@ HTML_TEMPLATE = """
                 try {
                     audioBuffer = await audioContext.decodeAudioData(arrayBuffer);
                 } catch (decodeError) {
-                    console.error('浏览器解码失败:', decodeError);
-                    console.log('尝试发送原始数据让后端处理...');
-                    // 解码失败时发送原始数据让后端处理
+                    console.error('Browser decode failed:', decodeError);
+                    console.log('Trying to send raw data for backend processing...');
+                    // If decode fails, send raw data for backend processing
                     await sendRawAudio(audioBlob, mimeType);
                     audioContext.close();
                     return;
                 }
                 
-                console.log('解码成功:', audioBuffer.sampleRate, 'Hz,', audioBuffer.duration.toFixed(2), '秒');
+                console.log('Decode successful:', audioBuffer.sampleRate, 'Hz,', audioBuffer.duration.toFixed(2), 'seconds');
                 
-                // 使用 OfflineAudioContext 重采样到 16kHz（关键：会自动低通滤波）
+                // Use OfflineAudioContext to resample to 16kHz (key: automatic low-pass filter)
                 const targetSampleRate = 16000;
                 const resampledData = await resampleWithOfflineContext(audioBuffer, targetSampleRate);
                 
-                // 编码为 WAV
+                // Encode to WAV
                 const wavBlob = encodeWAV(resampledData, targetSampleRate);
-                console.log('WAV 编码完成:', wavBlob.size, 'bytes');
+                console.log('WAV encoding complete:', wavBlob.size, 'bytes');
                 
-                // 发送到服务器
+                // Send to server
                 await sendAudioForRecognition(wavBlob);
                 
                 audioContext.close();
                 
             } catch (error) {
-                console.error('音频处理错误:', error);
+                console.error('Audio processing error:', error);
                 handleASRResult('');
             }
         }
 
         /**
-         * 发送原始音频（当 decodeAudioData 失败时使用）
+         * Send raw audio (when decodeAudioData fails)
          */
         async function sendRawAudio(audioBlob, mimeType) {
             const reader = new FileReader();
@@ -1584,7 +1747,7 @@ HTML_TEMPLATE = """
                 const base64Audio = reader.result.split(',')[1];
                 if (ws && ws.readyState === WebSocket.OPEN) {
                     const format = mimeType.includes('webm') ? 'webm' : 'mp4';
-                    console.log('发送原始音频, 格式:', format, ', 大小:', audioBlob.size);
+                    console.log('Sending raw audio, format:', format, ', size:', audioBlob.size);
                     ws.send(JSON.stringify({
                         type: 'audio',
                         audio: base64Audio,
@@ -1596,7 +1759,7 @@ HTML_TEMPLATE = """
         }
 
         /**
-         * 编码为 WAV 格式
+         * Encode to WAV format
          */
         function encodeWAV(samples, sampleRate) {
             const numChannels = 1;
@@ -1630,7 +1793,7 @@ HTML_TEMPLATE = """
             writeString(view, 36, 'data');
             view.setUint32(40, dataSize, true);
             
-            // 写入采样数据
+            // Write sample data
             let offset = 44;
             for (let i = 0; i < samples.length; i++) {
                 const sample = Math.max(-1, Math.min(1, samples[i]));
@@ -1653,7 +1816,7 @@ HTML_TEMPLATE = """
             reader.onloadend = () => {
                 const base64Audio = reader.result.split(',')[1];
                 if (ws && ws.readyState === WebSocket.OPEN) {
-                    console.log('发送 WAV 到服务器, base64 长度:', base64Audio.length);
+                    console.log('Sending WAV to server, base64 length:', base64Audio.length);
                     ws.send(JSON.stringify({
                         type: 'audio',
                         audio: base64Audio,
@@ -1671,7 +1834,7 @@ HTML_TEMPLATE = """
             document.getElementById('voiceTranscript').textContent = text;
             
             if (text && text.trim()) {
-                document.getElementById('voiceStatus').textContent = '已识别';
+                document.getElementById('voiceStatus').textContent = 'Recognized';
                 
                 setTimeout(() => {
                     document.getElementById('voiceOverlay').classList.remove('active');
@@ -1685,7 +1848,7 @@ HTML_TEMPLATE = """
                     document.getElementById('voiceBtn').disabled = true;
                 }, 800);
             } else {
-                document.getElementById('voiceStatus').textContent = '未识别到语音';
+                document.getElementById('voiceStatus').textContent = 'No speech detected';
                 setTimeout(() => {
                     document.getElementById('voiceOverlay').classList.remove('active');
                 }, 1500);
@@ -1693,14 +1856,14 @@ HTML_TEMPLATE = """
         }
 
         /**
-         * ★★★ 修复后的取消语音函数 ★★★
-         * 关键修改：取消时不触发 onstop 处理
+         * ★★★ Fixed cancel voice function ★★★
+         * Key fix: Don't trigger onstop processing when cancelling
          */
         function cancelVoice() {
             clearTimeout(window.recordingTimeout);
             
             if (mediaRecorder && mediaRecorder.state !== 'inactive') {
-                // ★★★ 取消时不触发 onstop 处理 ★★★
+                // ★★★ Don't trigger onstop processing when cancelling ★★★
                 mediaRecorder.ondataavailable = null;
                 mediaRecorder.onstop = null;
                 mediaRecorder.stop();
@@ -1731,11 +1894,11 @@ HTML_TEMPLATE = """
                 audio.play();
                 audio.onended = () => URL.revokeObjectURL(url);
             } catch (error) {
-                console.error('播放TTS音频失败:', error);
+                console.error('TTS audio playback failed:', error);
             }
         }
 
-        // ===== 唤醒词检测 =====
+        // ===== Wake word detection =====
         function toggleWakeWord(enabled) {
             wakeWordEnabled = enabled;
             const indicator = document.getElementById('wakeIndicator');
@@ -1752,8 +1915,8 @@ HTML_TEMPLATE = """
 
         function startWakeWordDetection() {
             if (!('webkitSpeechRecognition' in window) && !('SpeechRecognition' in window)) {
-                console.warn('浏览器不支持语音识别');
-                alert('您的浏览器不支持语音识别功能，请使用Chrome浏览器');
+                console.warn('Browser does not support speech recognition');
+                alert('Your browser does not support speech recognition. Please use Chrome browser');
                 document.getElementById('wakeWordToggle').checked = false;
                 document.getElementById('wakeIndicator').style.display = 'none';
                 return;
@@ -1763,21 +1926,19 @@ HTML_TEMPLATE = """
             recognition = new SpeechRecognition();
             recognition.continuous = true;
             recognition.interimResults = true;
-            recognition.lang = 'zh-CN';
+            recognition.lang = 'en-US';
             
             recognition.onresult = (event) => {
                 const indicator = document.getElementById('wakeIndicator');
                 
                 for (let i = event.resultIndex; i < event.results.length; i++) {
                     const transcript = event.results[i][0].transcript.toLowerCase();
-                    console.log('识别到:', transcript);
+                    console.log('Recognized:', transcript);
                     
                     if (transcript.includes('friday') || 
                         transcript.includes('hey friday') || 
-                        transcript.includes('嘿friday') ||
-                        transcript.includes('你好friday') ||
-                        transcript.includes('嗨friday') ||
-                        transcript.includes('弗莱德')) {
+                        transcript.includes('hi friday') ||
+                        transcript.includes('hello friday')) {
                         
                         indicator.classList.add('active');
                         recognition.stop();
@@ -1793,7 +1954,7 @@ HTML_TEMPLATE = """
             };
             
             recognition.onerror = (event) => {
-                console.error('唤醒词检测错误:', event.error);
+                console.error('Wake word detection error:', event.error);
                 if (event.error !== 'no-speech' && wakeWordEnabled) {
                     setTimeout(startWakeWordDetection, 1000);
                 }
@@ -1806,7 +1967,7 @@ HTML_TEMPLATE = """
                             try {
                                 recognition.start();
                             } catch (e) {
-                                console.log('重启唤醒词检测');
+                                console.log('Restarting wake word detection');
                             }
                         }
                     }, 500);
@@ -1815,9 +1976,9 @@ HTML_TEMPLATE = """
             
             try {
                 recognition.start();
-                console.log('唤醒词检测已启动');
+                console.log('Wake word detection started');
             } catch (e) {
-                console.error('启动唤醒词检测失败:', e);
+                console.error('Failed to start wake word detection:', e);
             }
         }
 
@@ -1843,9 +2004,9 @@ HTML_TEMPLATE = """
 """
 
 
-# ===== ASR引擎 =====
+# ===== ASR Engine =====
 class ASREngine:
-    """语音识别引擎"""
+    """Speech recognition engine"""
     
     def __init__(self, model_size: str = "small", device: str = "cuda"):
         self.model_size = model_size
@@ -1891,7 +2052,7 @@ class ASREngine:
             self.initialize()
         
         if self._model is None:
-            return "语音识别不可用"
+            return "Speech recognition unavailable"
         
         loop = asyncio.get_event_loop()
         result = await loop.run_in_executor(
@@ -1910,7 +2071,7 @@ class ASREngine:
         
         segments, info = self._model.transcribe(
             audio_data,
-            language="zh",
+            language="en",
             beam_size=5
         )
         
@@ -1918,11 +2079,11 @@ class ASREngine:
         return text.strip()
 
 
-# ===== TTS引擎 =====
+# ===== TTS Engine =====
 class TTSEngine:
-    """语音合成引擎"""
+    """Text-to-speech engine"""
     
-    def __init__(self, voice: str = "zh-CN-XiaoxiaoNeural"):
+    def __init__(self, voice: str = "en-US-AvaNeural"):
         self.voice = voice
     
     async def synthesize(self, text: str) -> bytes:
@@ -1946,26 +2107,26 @@ class TTSEngine:
             return b""
 
 
-# ===== 音频处理（修复版）=====
+# ===== Audio processing (fixed version) =====
 
 def resample_audio_scipy(audio: np.ndarray, from_rate: int, to_rate: int) -> np.ndarray:
-    """使用 scipy 进行高质量重采样（带抗混叠滤波）"""
+    """High-quality resampling using scipy (with anti-aliasing filter)"""
     if from_rate == to_rate:
         return audio
     
-    # 计算重采样参数
+    # Calculate resampling parameters
     gcd = np.gcd(from_rate, to_rate)
     up = to_rate // gcd
     down = from_rate // gcd
     
-    # scipy.signal.resample_poly 会自动进行抗混叠滤波
+    # scipy.signal.resample_poly automatically performs anti-aliasing filter
     resampled = signal.resample_poly(audio, up, down)
     
     return resampled.astype(np.float32)
 
 
 def resample_audio_linear(audio: np.ndarray, from_rate: int, to_rate: int) -> np.ndarray:
-    """简单线性插值重采样（备用方案，质量较差）"""
+    """Simple linear interpolation resampling (fallback, lower quality)"""
     if from_rate == to_rate:
         return audio
     
@@ -1980,7 +2141,7 @@ def resample_audio_linear(audio: np.ndarray, from_rate: int, to_rate: int) -> np
 
 
 def convert_wav_to_numpy(wav_data: bytes) -> np.ndarray:
-    """将WAV音频数据转换为numpy数组（修复版：增加采样率验证和重采样）"""
+    """Convert WAV audio data to numpy array (fixed version: add sample rate validation and resampling)"""
     try:
         if len(wav_data) < 44:
             logger.error("WAV data too short")
@@ -1994,7 +2155,7 @@ def convert_wav_to_numpy(wav_data: bytes) -> np.ndarray:
             n_frames = wav_file.getnframes()
             audio_bytes = wav_file.readframes(n_frames)
         
-        logger.info(f"WAV 参数: {sample_rate}Hz, {n_channels}ch, {sample_width*8}bit, {n_frames} frames")
+        logger.info(f"WAV params: {sample_rate}Hz, {n_channels}ch, {sample_width*8}bit, {n_frames} frames")
         
         if sample_width == 2:
             audio_data = np.frombuffer(audio_bytes, dtype=np.int16)
@@ -2010,17 +2171,17 @@ def convert_wav_to_numpy(wav_data: bytes) -> np.ndarray:
         
         audio_float = audio_data.astype(np.float32) / 32768.0
         
-        # 关键修复：如果采样率不是 16kHz，进行高质量重采样
+        # Key fix: If sample rate is not 16kHz, perform high-quality resampling
         if sample_rate != 16000:
-            logger.info(f"后端重采样: {sample_rate}Hz -> 16000Hz")
+            logger.info(f"Backend resampling: {sample_rate}Hz -> 16000Hz")
             if HAS_SCIPY:
                 audio_float = resample_audio_scipy(audio_float, sample_rate, 16000)
-                logger.info("使用 scipy 高质量重采样")
+                logger.info("Using scipy high-quality resampling")
             else:
                 audio_float = resample_audio_linear(audio_float, sample_rate, 16000)
-                logger.warning("使用线性插值重采样（建议安装 scipy: pip install scipy）")
+                logger.warning("Using linear interpolation resampling (recommend installing scipy: pip install scipy)")
         
-        logger.info(f"转换完成: {len(audio_float)} 样本 ({len(audio_float)/16000:.2f}秒)")
+        logger.info(f"Conversion complete: {len(audio_float)} samples ({len(audio_float)/16000:.2f} seconds)")
         return audio_float
         
     except Exception as e:
@@ -2031,26 +2192,26 @@ def convert_wav_to_numpy(wav_data: bytes) -> np.ndarray:
 
 
 def convert_webm_to_numpy(webm_data: bytes) -> np.ndarray:
-    """将 WebM 音频转换为 numpy 数组（需要 pydub + ffmpeg）"""
+    """Convert WebM audio to numpy array (requires pydub + ffmpeg)"""
     try:
         from pydub import AudioSegment
         
         audio_io = io.BytesIO(webm_data)
         audio = AudioSegment.from_file(audio_io, format='webm')
         
-        # 转换为单声道 16kHz
+        # Convert to mono 16kHz
         audio = audio.set_channels(1).set_frame_rate(16000)
         
-        # 转换为 numpy
+        # Convert to numpy
         samples = np.array(audio.get_array_of_samples(), dtype=np.float32)
         samples = samples / 32768.0
         
-        logger.info(f"WebM 转换完成: {len(samples)} 样本 ({len(samples)/16000:.2f}秒)")
+        logger.info(f"WebM conversion complete: {len(samples)} samples ({len(samples)/16000:.2f} seconds)")
         return samples
         
     except ImportError:
-        logger.error("需要 pydub 来处理 WebM: pip install pydub")
-        logger.error("还需要安装 ffmpeg")
+        logger.error("Need pydub to process WebM: pip install pydub")
+        logger.error("Also need to install ffmpeg")
         return np.array([])
     except Exception as e:
         logger.error(f"WebM conversion error: {e}")
@@ -2058,16 +2219,16 @@ def convert_webm_to_numpy(webm_data: bytes) -> np.ndarray:
 
 
 def clean_text_for_tts(text: str) -> str:
-    """清理文本用于TTS"""
+    """Clean text for TTS"""
     cleaned = re.sub(r'\{[^}]+\}', '', text)
     cleaned = re.sub(r'[✅❌🔧📊🔋🛞🛢️📍🌡️🎵🪟❄️⚡]', '', cleaned)
     cleaned = ' '.join(cleaned.split())
     return cleaned.strip()
 
 
-# ===== FastAPI应用 =====
+# ===== FastAPI application =====
 if HAS_FASTAPI:
-    app = FastAPI(title="智能座舱助手 - 语音增强版（修复）")
+    app = FastAPI(title="Intelligent Cockpit Assistant - Voice Enhanced (Fixed)")
     assistant: Optional[CockpitAssistant] = None
     asr_engine: Optional[ASREngine] = None
     tts_engine: Optional[TTSEngine] = None
@@ -2134,10 +2295,10 @@ if HAS_FASTAPI:
                             
                         except Exception as e:
                             logger.error(f"Error in chat generation: {e}", exc_info=True)
-                            await websocket.send_json({"type": "token", "content": f"错误: {str(e)}"})
+                            await websocket.send_json({"type": "token", "content": f"Error: {str(e)}"})
                             await websocket.send_json({"type": "end"})
                     else:
-                        await websocket.send_json({"type": "token", "content": "助手未初始化"})
+                        await websocket.send_json({"type": "token", "content": "Assistant not initialized"})
                         await websocket.send_json({"type": "end"})
 
                 elif data.get("type") == "audio":
@@ -2149,7 +2310,7 @@ if HAS_FASTAPI:
                             audio_bytes = base64.b64decode(audio_base64)
                             logger.info(f"Received audio: {len(audio_bytes)} bytes, format: {audio_format}")
                             
-                            # 根据格式选择转换方法
+                            # Select conversion method based on format
                             if audio_format == 'wav':
                                 audio_array = convert_wav_to_numpy(audio_bytes)
                             elif audio_format in ['webm', 'mp4']:
@@ -2180,7 +2341,7 @@ if HAS_FASTAPI:
                     else:
                         await websocket.send_json({
                             "type": "asr_result",
-                            "text": "语音识别不可用"
+                            "text": "Speech recognition unavailable"
                         })
 
         except WebSocketDisconnect:
@@ -2191,59 +2352,53 @@ if HAS_FASTAPI:
 
 def main(model_path: str, host: str = "0.0.0.0", port: int = 8000,
          n_ctx: int = 4096, n_gpu_layers: int = 0,
-         asr_model: str = "small", tts_voice: str = "zh-CN-XiaoxiaoNeural"):
+         asr_model: str = "small", tts_voice: str = "en-US-AvaNeural"):
     global assistant, asr_engine, tts_engine
 
     if not HAS_FASTAPI:
-        print("请安装依赖: pip install fastapi uvicorn")
+        print("Please install dependencies: pip install fastapi uvicorn")
         return
 
     print("=" * 60)
-    print("  🚗 Friday 智能座舱助手")
+    print("  🚗 Friday Intelligent Cockpit Assistant")
     print("=" * 60)
-    print(f"\n正在加载模型: {model_path}")
+    print(f"\nLoading model: {model_path}")
 
     try:
         assistant = CockpitAssistant(model_path=model_path, n_ctx=n_ctx, n_gpu_layers=n_gpu_layers)
-        #print("✓ LLM模型加载成功！")
     except Exception as e:
-        print(f"⚠ 警告: 模型加载失败 ({e})，将使用模拟模式")
+        print(f"⚠ Warning: Model loading failed ({e}), using mock mode")
         assistant = CockpitAssistant("mock_model.gguf")
 
     if HAS_WHISPER:
-        #print(f"\n正在加载ASR模型: {asr_model}")
         asr_engine = ASREngine(model_size=asr_model, device="cuda" if n_gpu_layers > 0 else "cpu")
         try:
             asr_engine.initialize()
-            #print("✓ ASR模型加载成功！")
         except Exception as e:
-            print(f"⚠ ASR模型加载失败: {e}")
+            print(f"⚠ ASR model loading failed: {e}")
     else:
-        print("\n⚠ ASR不可用 (请安装 faster-whisper)")
+        print("\n⚠ ASR unavailable (please install faster-whisper)")
     
     if HAS_EDGE_TTS:
         tts_engine = TTSEngine(voice=tts_voice)
-        #print(f"✓ TTS引擎就绪 (语音: {tts_voice})")
     else:
-        print("⚠ TTS不可用 (请安装 edge-tts)")
+        print("⚠ TTS unavailable (please install edge-tts)")
 
-    print(f"\n启动Web服务器: http://{host}:{port}")
+    print(f"\nStarting web server: http://{host}:{port}")
 
     uvicorn.run(app, host=host, port=port)
 
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description="智能座舱助手 - Friday")
-    parser.add_argument("model_path", nargs="?", default="models/qwen2.5-7b-instruct-q4_k_m.gguf", help="模型文件路径")
-    parser.add_argument("--host", default="0.0.0.0", help="服务器地址")
-    parser.add_argument("--port", type=int, default=8000, help="服务器端口")
-    parser.add_argument("-c", "--ctx", type=int, default=4096, help="上下文长度")
-    parser.add_argument("-g", "--gpu-layers", type=int, default=0, help="GPU层数")
+    parser = argparse.ArgumentParser(description="Intelligent Cockpit Assistant - Friday")
+    parser.add_argument("model_path", nargs="?", default="models/qwen2.5-7b-instruct-q4_k_m.gguf", help="Model file path")
+    parser.add_argument("--host", default="0.0.0.0", help="Server address")
+    parser.add_argument("--port", type=int, default=8000, help="Server port")
+    parser.add_argument("-c", "--ctx", type=int, default=4096, help="Context length")
+    parser.add_argument("-g", "--gpu-layers", type=int, default=0, help="Number of GPU layers")
     parser.add_argument("--asr-model", default="small", choices=["tiny", "base", "small", "medium", "large"],
-                        help="Whisper ASR模型大小")
-    parser.add_argument("--tts-voice", default="zh-CN-XiaoxiaoNeural",
-                        help="TTS语音")
-
+                        help="Whisper ASR model size")
+    parser.add_argument("--tts-voice", default="en-US-AvaNeural")
     args = parser.parse_args()
     main(args.model_path, args.host, args.port, args.ctx, args.gpu_layers, 
          args.asr_model, args.tts_voice)

@@ -222,4 +222,4 @@ void PrefixCacheManager::evict_lru() {
     entries_.erase(lru_it);
 }
 
-} // namespace cockpit
+}

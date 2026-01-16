@@ -9,7 +9,7 @@
 namespace py = pybind11;
 
 PYBIND11_MODULE(cockpit_engine_py, m) {
-    m.doc() = "Cockpit Assistant LLM Engine - Python bindings";
+    m.doc() = "Cockpit Assistant LLM Engine";
     
     // Message结构体
     py::class_<cockpit::Message>(m, "Message")
