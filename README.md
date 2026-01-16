@@ -229,3 +229,6 @@ MIT License
 
 ## Code Assistant
 - Claude Code
+
+## Skills Reference
+- [Skills](https://github.com/anthropics/skills)
